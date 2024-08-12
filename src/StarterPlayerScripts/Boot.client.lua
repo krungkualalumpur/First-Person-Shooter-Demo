@@ -15,5 +15,14 @@ local WeaponSys = require(ReplicatedStorage:WaitForChild("Client"):WaitForChild(
 --local functions
 --class
 local maid = Maid.new()
-print("Ima le")
+
 WeaponSys.init(maid)
+
+-- local char = game.Players.LocalPlayer.Character or game.Players.LocalPlayer.CharacterAdded:Wait()
+-- while task.wait(1) do
+--     for _,v in pairs(char.Humanoid.Animator:GetPlayingAnimationTracks()) do
+--         --if v.Name:lower():find("toolnoneanim") or v.Name:lower():find("animation1") or v.Name:lower():find("idle") then 
+--         v:Stop(0)
+--         --end
+--     end
+-- end

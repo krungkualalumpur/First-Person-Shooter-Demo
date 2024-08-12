@@ -2,6 +2,7 @@
 --services
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 --packages
 local _Packages = ReplicatedStorage:WaitForChild("Packages")
 
@@ -12,19 +13,30 @@ local InputHandler = require(_Packages:WaitForChild("InputHandler"))
 --types
 type Maid = Maid.Maid
 --constants
+local WALK_SPEED = 15
+local JUMP_POWER = 50
 --remotes
 --variables
+local camFOV = 70
 --references
 local Player = Players.LocalPlayer
 --local functions
 --class
 local sys = {}
 
+local function freezePlayer()
+    local character = Player.Character or Player.CharacterAdded:Wait()
+    character.Humanoid.WalkSpeed = 0
+    character.Humanoid.JumpPower = 0
+end
+local function thawPlayer()
+    local character = Player.Character or Player.CharacterAdded:Wait()
+    character.Humanoid.WalkSpeed = WALK_SPEED
+    character.Humanoid.JumpPower = JUMP_POWER
+end
+
 function otherPlayerHit(plr : Player)
 	
-end
-function onGunInit()
-    
 end
 
 function getWeaponFromPlayer(plr : Player)
@@ -34,9 +46,9 @@ function getWeaponFromPlayer(plr : Player)
 end
 
 function sys.onGunWeapon(gun : Tool)
-    print("1")
     if gun:IsA("Tool") then
-        print("2")
+        local _maid = Maid.new()
+
         local camera = workspace.CurrentCamera
         
         local char = if gun.Parent and Players:GetPlayerFromCharacter(gun.Parent) then gun.Parent :: Model else nil; assert(char and char.PrimaryPart)
@@ -53,6 +65,11 @@ function sys.onGunWeapon(gun : Tool)
 		assert(leftLowerArm and leftUpperArm and leftHand and  rightLowerArm and rightUpperArm and rightHand)
         local head  = char:FindFirstChild("Head") :: BasePart?; assert(head)
         local humanoidRootPart = char:FindFirstChild("HumanoidRootPart") :: BasePart?; assert(humanoidRootPart)
+
+        local leftShoulder, leftElbow, rightShoulder, rightElbow = leftUpperArm:FindFirstChild("LeftShoulder") :: Motor6D,
+            leftLowerArm:FindFirstChild("LeftElbow") :: Motor6D,
+            rightUpperArm:FindFirstChild("RightShoulder") :: Motor6D,
+            rightLowerArm:FindFirstChild("RightElbow") :: Motor6D
 
 		local animator = humanoid:WaitForChild("Animator") :: Animator
 		
@@ -91,11 +108,8 @@ function sys.onGunWeapon(gun : Tool)
         local runAnim  = animateScript:WaitForChild("run"):WaitForChild("RunAnim") :: Animation
         local walkAnim  = animateScript:WaitForChild("walk"):WaitForChild("WalkAnim") :: Animation
 
-		runAnim.AnimationId = "rbxassetid://18908827149"
-		walkAnim.AnimationId = "rbxassetid://18908827149"
-		--default
-		--animateScript.run.RunAnim.AnimationId = "rbxassetid://18908827149"
-		--animateScript.walk.WalkAnim.AnimationId = "rbxassetid://913376220"
+	
+
 		local function customInverseKinematicsCfAndAngles(a : number, b : number, startV3 : Vector3, targetV3 : Vector3): (CFrame, number, number, number)
             local c = math.clamp((startV3 - targetV3).Magnitude, 0, (a + b))
             --local handDestPos = if (startV3 - targetV3).Magnitude > a + b then startV3 + (targetV3 - startV3).Unit*c else targetV3
@@ -109,8 +123,38 @@ function sys.onGunWeapon(gun : Tool)
             return cf, A, B, C
 		end
 
-		local camFOV = camera.FieldOfView
-		game["Run Service"].Stepped:Connect(function()
+        local function resetJoints()
+            leftShoulder.C0, leftElbow.C0, rightShoulder.C0, rightElbow.C0 = CFrame.new(leftShoulder.C0.Position),  CFrame.new(leftElbow.C0.Position), CFrame.new(rightShoulder.C0.Position), CFrame.new(rightElbow.C0.Position)
+        end
+        local function cleanup()
+            _maid:Destroy()
+
+            runAnim.AnimationId = "rbxassetid://913376220"
+		    walkAnim.AnimationId = "rbxassetid://913376220"
+
+            humanoid.CameraOffset = Vector3.new()
+
+            Player.CameraMode = Enum.CameraMode.Classic
+
+            resetJoints()
+
+            camera.FieldOfView = camFOV
+        end
+        freezePlayer()
+        task.wait(0.5)
+        thawPlayer()
+        runAnim.AnimationId = "rbxassetid://18908827149"
+		walkAnim.AnimationId = "rbxassetid://18908827149"
+		--default
+		--animateScript.run.RunAnim.AnimationId = "rbxassetid://18908827149"
+		--animateScript.walk.WalkAnim.AnimationId = "rbxassetid://913376220"
+        
+        for _,v in pairs(animator:GetPlayingAnimationTracks()) do
+            v:Stop(0)
+        end
+        resetJoints()
+        
+		_maid:GiveTask(RunService.Stepped:Connect(function()
 			humanoid.CameraOffset = humanoidRootPart.CFrame:VectorToObjectSpace(camera.CFrame.UpVector*head.Size.Y*0.5 + camera.CFrame.LookVector*head.Size.Z*0.5) --Vector3.new(0,char.Head.Size.Y*0.25,-char.Head.Size.Z)
 			--Player.CameraMaxZoomDistance = 12
 			--Player.CameraMinZoomDistance = 0
@@ -141,9 +185,9 @@ function sys.onGunWeapon(gun : Tool)
 			local c_r = math.clamp((rightTorsoToArmPos - destPos).Magnitude, 0, (a_r + b_r))
 
 			for _,v in pairs(animator:GetPlayingAnimationTracks()) do
-				--if v.Name:lower():find("toolnoneanim") or v.Name:lower():find("animation1") or v.Name:lower():find("idle") then 
-				v:Stop()
-				--end
+				if not v.Name:lower():find("walk") and not v.Name:lower():find("run") then 
+				    v:Stop(0)
+				end
 			end
 			
 			local handDestPos = if (rightTorsoToArmPos - destPos).Magnitude > a_r + b_r then rightTorsoToArmPos + (destPos - rightTorsoToArmPos).Unit*c_r else destPos
@@ -151,10 +195,7 @@ function sys.onGunWeapon(gun : Tool)
             local cfrot_l, A_l, B_l, C_l = customInverseKinematicsCfAndAngles(a_l, b_l, leftTorsoToArmPos, handDestPos)
             local cfrot_r, A_r, B_r, C_r = customInverseKinematicsCfAndAngles(a_r, b_r, rightTorsoToArmPos, handDestPos)
           
-            local leftShoulder, leftElbow, rightShoulder, rightElbow = leftUpperArm:FindFirstChild("LeftShoulder") :: Motor6D,
-                leftLowerArm:FindFirstChild("LeftElbow") :: Motor6D,
-                rightUpperArm:FindFirstChild("RightShoulder") :: Motor6D,
-                rightLowerArm:FindFirstChild("RightElbow") :: Motor6D
+            --hand dest pos check
 
 			leftShoulder.C0 = leftShoulder.C0:Lerp(
 				CFrame.new(leftShoulder.C0.Position)*cfrot_l*CFrame.Angles(-A_l, 0, 0), 0.3
@@ -175,9 +216,13 @@ function sys.onGunWeapon(gun : Tool)
 			else
 				camera.FieldOfView = MathUtil.lerp(camera.FieldOfView*1.04, camFOV, 0.25)
 			end
-		end)
+		end))
 		
-		
+		_maid:GiveTask(gun.AncestryChanged:Connect(function()
+            if not Player.Character or not gun:IsAncestorOf(Player.Character) then
+                cleanup()
+            end
+		end))
 	end
 end
 
