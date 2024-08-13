@@ -362,12 +362,15 @@ function shoot(weapon : Tool)
     local camera = workspace.CurrentCamera
     local handle = weapon:FindFirstChild("Handle") :: BasePart?; assert(handle)
     
-    camera.CFrame = camera.CFrame*CFrame.Angles(math.rad(3), 0, 0)
+    camera.CFrame = camera.CFrame*CFrame.Angles(math.rad(math.random(2,5)), 0, 0)
+
+    local offsetAmp = math.random(1, 3)/10
+    local rotOffsetAmp = math.random(10, 40)/1000
 
     conn = RunService.Stepped:Connect(function()
         i += 0.3
-        setCamOffset(Vector3.new(-math.sin(i)*0.2, 0, 0))
-        setCamRotOffset(Vector3.new(math.sin(i*2)*0.035, 0, 0))
+        setCamOffset(Vector3.new(-math.sin(i)*offsetAmp, 0, 0))
+        setCamRotOffset(Vector3.new(math.sin(i*2)*rotOffsetAmp, 0, 0))
         if i >= math.pi then
             if conn then conn:Disconnect() end
             setCamOffset(Vector3.new(0, 0, 0))
