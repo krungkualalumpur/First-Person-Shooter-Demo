@@ -3,15 +3,22 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 --packages
 local _Packages = ReplicatedStorage:WaitForChild("Packages")
 
 local Maid = require(_Packages:WaitForChild("Maid"))
+local ColdFusion = require(_Packages:WaitForChild("ColdFusion8"))
 local MathUtil = require(_Packages:WaitForChild("MathUtil"))
 local InputHandler = require(_Packages:WaitForChild("InputHandler"))
 --modules
 --types
 type Maid = Maid.Maid
+
+type Fuse = ColdFusion.Fuse
+type State<T> = ColdFusion.State<T>
+type ValueState<T> = ColdFusion.ValueState<T>
+type CanBeState<T> = ColdFusion.CanBeState<T>
 --constants
 local WALK_SPEED = 15
 local JUMP_POWER = 50
@@ -20,9 +27,26 @@ local JUMP_POWER = 50
 local camFOV = 70
 --references
 local Player = Players.LocalPlayer
+local UITarget = Player:WaitForChild("PlayerGui"):WaitForChild("ScreenGui")
 --local functions
 --class
 local sys = {}
+
+local _camOffset = Vector3.new()
+local _camRotOffset = Vector3.new()
+function setCamOffset(offset : Vector3)
+    _camOffset = offset
+end
+function getCamOffset()
+    return _camOffset
+end
+function setCamRotOffset(offset : Vector3)
+    _camRotOffset = offset
+end
+function getCamRotOffset()
+    return _camRotOffset
+end
+
 
 local function freezePlayer()
     local character = Player.Character or Player.CharacterAdded:Wait()
@@ -39,15 +63,79 @@ function otherPlayerHit(plr : Player)
 	
 end
 
+function onInstanceHit(hit : BasePart, cf : CFrame)
+    local p = Instance.new("Part")
+    p.Anchored = true
+    p.Transparency = 1
+    p.CFrame = cf
+    p.Parent = hit.Parent
+    local smoke = Instance.new("Smoke")
+    smoke.Size = 2
+    smoke.Opacity = 0.06
+    smoke.Parent = p
+    task.delay(0.4, function()
+        smoke.Enabled = false 
+        task.delay(3, function()
+            smoke:Destroy()
+            p:Destroy()
+        end)
+    end)
+end
+
 function getWeaponFromPlayer(plr : Player)
     local char = Player.Character
     local gun = char:FindFirstChild("Gun") :: Tool?
     return if gun and gun:FindFirstChild("Handle") then gun else nil
 end
 
-function sys.onGunWeapon(gun : Tool)
+function spawnBullet(startCf : CFrame)
+    local _maid = Maid.new()
+
+    local p = _maid:GiveTask(Instance.new("Part"))
+    p.Anchored = true
+    p.CanCollide = true
+    p.Size = Vector3.new(0.2,0.2,1)
+    p.CFrame = startCf-- handle.CFrame + handle.CFrame.LookVector*handle.Size.Y
+    p.Material = Enum.Material.Neon
+    p.Parent = workspace		
+
+    --bullet init
+    local i = 0
+    _maid:GiveTask(RunService.Stepped:Connect(function(t, dt : number)
+        i += dt*10
+        p.CFrame += p.CFrame.LookVector*3
+        local parts = workspace:GetPartsInPart(p)
+        if #parts > 0 then
+            for _,v in pairs(parts) do
+                local plrHit = game.Players:GetPlayerFromCharacter(v.Parent)
+                local _char = v.Parent
+                if plrHit then
+                    otherPlayerHit(plrHit)
+                    return
+                end
+                onInstanceHit(v, p.CFrame)
+            end
+            _maid:Destroy() 
+        end
+        if i >= 100 then
+            _maid:Destroy()
+        end
+    end))
+
+    return p
+end
+
+function sys.onWeaponEquipped(gun : Tool)
     if gun:IsA("Tool") then
         local _maid = Maid.new()
+
+        local _fuse = ColdFusion.fuse(_maid)
+        local _new = _fuse.new
+        local _import = _fuse.import
+        local _bind = _fuse.bind
+        local _clone = _fuse.clone
+        local _Computed = _fuse.Computed
+        local _Value = _fuse.Value
 
         local camera = workspace.CurrentCamera
         
@@ -91,7 +179,7 @@ function sys.onGunWeapon(gun : Tool)
 		
 		
 		Player.CameraMode = Enum.CameraMode.LockFirstPerson
-		humanoid.CameraOffset = Vector3.new(0, 0, -1)
+		humanoid.CameraOffset = Vector3.new(0, 0, -1) 
 		for i, v in pairs(char:GetChildren()) do
 			if v:IsA("BasePart") and v.Name ~= "Head" then
 
@@ -100,7 +188,6 @@ function sys.onGunWeapon(gun : Tool)
 				end)
 
 				v.LocalTransparencyModifier = v.Transparency
-
 			end
 		end
 		
@@ -126,6 +213,19 @@ function sys.onGunWeapon(gun : Tool)
         local function resetJoints()
             leftShoulder.C0, leftElbow.C0, rightShoulder.C0, rightElbow.C0 = CFrame.new(leftShoulder.C0.Position),  CFrame.new(leftElbow.C0.Position), CFrame.new(rightShoulder.C0.Position), CFrame.new(rightElbow.C0.Position)
         end
+        local function createAim()
+            local out = _new("Frame")({
+                AnchorPoint = Vector2.new(0.5,0.5),
+                Size = UDim2.new(0, 15,0,15),
+                Parent = UITarget,
+                Children = {
+                    _new("UICorner")({
+                        CornerRadius = UDim.new(1, 0)
+                    })
+                }
+            }) :: Frame
+            return out
+        end
         local function cleanup()
             _maid:Destroy()
 
@@ -140,29 +240,25 @@ function sys.onGunWeapon(gun : Tool)
 
             camera.FieldOfView = camFOV
         end
+        
+        local aimFrame = createAim()
+
         freezePlayer()
-        task.wait(0.5)
+        task.wait(0.15)
         thawPlayer()
         runAnim.AnimationId = "rbxassetid://18908827149"
 		walkAnim.AnimationId = "rbxassetid://18908827149"
-		--default
-		--animateScript.run.RunAnim.AnimationId = "rbxassetid://18908827149"
-		--animateScript.walk.WalkAnim.AnimationId = "rbxassetid://913376220"
-        
+	
         for _,v in pairs(animator:GetPlayingAnimationTracks()) do
             v:Stop(0)
         end
         resetJoints()
         
 		_maid:GiveTask(RunService.Stepped:Connect(function()
-			humanoid.CameraOffset = humanoidRootPart.CFrame:VectorToObjectSpace(camera.CFrame.UpVector*head.Size.Y*0.5 + camera.CFrame.LookVector*head.Size.Z*0.5) --Vector3.new(0,char.Head.Size.Y*0.25,-char.Head.Size.Z)
-			--Player.CameraMaxZoomDistance = 12
-			--Player.CameraMinZoomDistance = 0
-			--camera.CameraType = Enum.CameraType.Scriptable 
-			--camera.CFrame = char.Head.CFrame*CFrame.new(0,0,-char.Head.Size.Z*0.65)
-			--char.Head.Transparency = 1
-			--tracking camera cframe
-			local isAiming = game.UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
+			humanoid.CameraOffset = humanoidRootPart.CFrame:VectorToObjectSpace(camera.CFrame.UpVector*head.Size.Y*0.75 + camera.CFrame.LookVector*head.Size.Z*0.5 + getCamOffset()) --Vector3.new(0,char.Head.Size.Y*0.25,-char.Head.Size.Z)
+			camera.CFrame *= CFrame.Angles(getCamRotOffset().X, getCamRotOffset().Y, getCamOffset().Z)
+        
+			local isAiming = UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) or UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
 			
 			local rh_cf = char.PrimaryPart.CFrame:ToObjectSpace(rightHand.CFrame)
 			local x, y, z = rh_cf:ToOrientation()
@@ -170,12 +266,16 @@ function sys.onGunWeapon(gun : Tool)
 			local leftTorsoToArmPos = leftUpperArm.CFrame*(Vector3.new(0,leftUpperArm.Size.Y*0.5,0)) 
 			local rightTorsoToArmPos = rightUpperArm.CFrame*(Vector3.new(0,rightUpperArm.Size.Y*0.5,0)) 
 			
-			local deg = math.acos(((-char.PrimaryPart.Position - (char.PrimaryPart.CFrame.LookVector*handle.Size.Z) + rightTorsoToArmPos + Vector3.new(0, -1, 0)) ).Unit:Dot(-(char.PrimaryPart.CFrame.LookVector*handle.Size.Z).Unit))
+			local deg = math.acos(((-(char.PrimaryPart.CFrame.LookVector*handle.Size.Z) + (rightTorsoToArmPos - char.PrimaryPart.Position) + Vector3.new(0, -1, 0)) ).Unit:Dot(-(char.PrimaryPart.CFrame.LookVector*handle.Size.Z).Unit))
 			local directionSourceCf =  if isAiming then camera.CFrame*CFrame.new(0, -handle.Size.Y*0.5, 0)
 				else (char.PrimaryPart.CFrame*CFrame.Angles(-deg, 0, 0))
 			
-			local destPos : Vector3 = directionSourceCf*Vector3.new(0, 0, -handle.Size.Z*(if isAiming then 2 else 1))
+			local destPos : Vector3 = directionSourceCf*Vector3.new(0, if isAiming then -handle.Size.Y*0.5 else 0, -handle.Size.Z)
 				
+            local rayRange = 1000
+            local ray = workspace:Raycast(handle.CFrame*Vector3.new(0,0,handle.Size.Z*-0.5), handle.CFrame.LookVector*rayRange)
+            local aimWorldPos = if ray then ray.Position else nil
+
 			weld.C1 = weld.C1:Lerp(
 				CFrame.new(0,-handle.Size.Z*0.5,0)*((rightHand.CFrame:Inverse()*(directionSourceCf)) - (rightHand.CFrame:Inverse()*(directionSourceCf)).Position), 
 				0.3
@@ -216,6 +316,19 @@ function sys.onGunWeapon(gun : Tool)
 			else
 				camera.FieldOfView = MathUtil.lerp(camera.FieldOfView*1.04, camFOV, 0.25)
 			end
+
+            local hitV3 = aimWorldPos or (handle.Position + handle.CFrame.LookVector*rayRange)
+            local screenV3 = camera:WorldToViewportPoint(hitV3)
+            aimFrame.Visible = isAiming
+            aimFrame.Position = UDim2.fromOffset(screenV3.X, screenV3.Y) 
+
+            -- local p = Instance.new("Part")
+            -- p.Position = hitV3
+            -- p.Anchored = true
+            -- p.Parent = workspace
+            -- task.delay(0.1, function()
+            --     p:Destroy()
+            -- end)
 		end))
 		
 		_maid:GiveTask(gun.AncestryChanged:Connect(function()
@@ -231,7 +344,7 @@ function onCharAdded(char : Model)
     
     _maid:GiveTask(char.ChildAdded:Connect(function(weapon : Instance)
         if weapon:IsA("Tool") then
-            sys.onGunWeapon(weapon)
+            sys.onWeaponEquipped(weapon)
         end
     end))
 
@@ -241,61 +354,59 @@ function onCharAdded(char : Model)
         end
     end))
 end
+
+function shoot(weapon : Tool)
+    local conn
+    local i = 0
+
+    local camera = workspace.CurrentCamera
+    local handle = weapon:FindFirstChild("Handle") :: BasePart?; assert(handle)
+    
+    camera.CFrame = camera.CFrame*CFrame.Angles(math.rad(3), 0, 0)
+
+    conn = RunService.Stepped:Connect(function()
+        i += 0.3
+        setCamOffset(Vector3.new(-math.sin(i)*0.2, 0, 0))
+        setCamRotOffset(Vector3.new(math.sin(i*2)*0.035, 0, 0))
+        if i >= math.pi then
+            if conn then conn:Disconnect() end
+            setCamOffset(Vector3.new(0, 0, 0))
+            setCamRotOffset(Vector3.new(0, 0, 0))
+        end
+    end)
+    spawnBullet(handle.CFrame*CFrame.new(0,0,-handle.Size.Z*0.5))
+
+end
 function sys.init(maid : Maid)
-    print("test1?")
+    local _maid = maid:GiveTask(Maid.new())
     local inputHandler = maid:GiveTask(InputHandler.new())
 
-    inputHandler:Map("OnShoot", "Keyboard", {Enum.UserInputType.MouseButton1}, "Hold", function() 
+    local function onGunActivatedEvent()
         local char = Player.Character
         assert(char)
         local weapon = getWeaponFromPlayer(Player)
         assert(weapon)
         local handle = weapon:FindFirstChild("Handle") :: BasePart?; assert(handle)
-        --Player.CameraMaxZoomDistance = 0
-        --Player.CameraMinZoomDistance = 0
 
-        --create raycast with distance 1000
-        local raycastParams = RaycastParams.new()
-        raycastParams.FilterType = Enum.RaycastFilterType.Exclude
-        raycastParams.FilterDescendantsInstances = {char}
-        raycastParams.IgnoreWater = true
-        raycastParams.CollisionGroup = "Default"
-        raycastParams.RespectCanCollide = true
-        local raycastResult = workspace:Raycast(handle.Position, handle.CFrame.LookVector * 1000, raycastParams)
-        if raycastResult then
-            --create part at position
-            raycastResult.Instance.Color = Color3.fromRGB(255,0,0)
-        end
-
-        local p = Instance.new("Part")
-        p.Anchored = true
-        p.CanCollide = false
-        p.Size = Vector3.new(0.5,0.5,2)
-        p.CFrame = handle.CFrame + handle.CFrame.LookVector*handle.Size.Y
-        p.Material = Enum.Material.Neon
-        p.Parent = workspace		
-
-        --bullet init
-        for i = 0, 500 do 
-            p.CFrame += p.CFrame.LookVector*6
-            local parts = p:GetTouchingParts()
-            if #parts > 0 then
-                for _,v in pairs(parts) do
-                    local plrHit = game.Players:GetPlayerFromCharacter(v.Parent)
-                    local _char = v.Parent
-                    if plrHit then
-                        otherPlayerHit(plrHit)
-                    end
+        do
+            local t = 0
+            _maid.Shoot = RunService.Stepped:Connect(function(_, dt : number)
+                if t >= 0.25 then 
+                    t = 0
+                    shoot(weapon)
                 end
-
-                break
-            end
-            task.wait()
+                t += dt
+            end)
+            shoot(weapon)
         end
-        p:Destroy()
-    end, function() end)
+    end
 
-    print("keun")
+    inputHandler:Map("OnGunActivatedEvent", "Keyboard", {Enum.UserInputType.MouseButton1}, "Hold", function() 
+        onGunActivatedEvent()
+    end, function() 
+        _maid.Shoot = nil
+    end)
+
     onCharAdded(Player.Character or Player.CharacterAdded:Wait())
     maid:GiveTask(Player.CharacterAdded:Connect(onCharAdded))
 end
