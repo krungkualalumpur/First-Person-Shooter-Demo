@@ -49,6 +49,10 @@ end
 
 --class
 local sys = {}
+function getWeaponState()
+    
+end
+
 function onInstanceHit(hit : BasePart, cf : CFrame) 
     local function createFx()
         local p = Instance.new("Part")
@@ -158,9 +162,8 @@ function onGunShot(
 
     local gun = getWeaponFromPlayer(plr)
     assert(gun)
-    local weaponData = WeaponData.getWeaponData(gun)
-    
-    local t = 0
+    -- local weaponData = WeaponData.getWeaponData(gun)
+    -- local t = 0
     local _maid = Maid.new()
 
     local handle = gun:WaitForChild("Handle") :: BasePart

@@ -14,6 +14,7 @@ local MathUtil = require(_Packages:WaitForChild("MathUtil"))
 local InputHandler = require(_Packages:WaitForChild("InputHandler"))
 local NetworkUtil = require(_Packages:WaitForChild("NetworkUtil"))
 --modules
+local WeaponData = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("WeaponData"))
 --types
 type Maid = Maid.Maid
 
