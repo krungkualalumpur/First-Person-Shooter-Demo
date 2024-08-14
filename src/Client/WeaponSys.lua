@@ -4,6 +4,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
 --packages
 local _Packages = ReplicatedStorage:WaitForChild("Packages")
 
@@ -11,6 +12,7 @@ local Maid = require(_Packages:WaitForChild("Maid"))
 local ColdFusion = require(_Packages:WaitForChild("ColdFusion8"))
 local MathUtil = require(_Packages:WaitForChild("MathUtil"))
 local InputHandler = require(_Packages:WaitForChild("InputHandler"))
+local NetworkUtil = require(_Packages:WaitForChild("NetworkUtil"))
 --modules
 --types
 type Maid = Maid.Maid
@@ -23,12 +25,23 @@ type CanBeState<T> = ColdFusion.CanBeState<T>
 local WALK_SPEED = 15
 local JUMP_POWER = 50
 --remotes
+local ON_WEAPON_SHOT = "OnWeaponShot"
 --variables
 local camFOV = 70
 --references
 local Player = Players.LocalPlayer
 local UITarget = Player:WaitForChild("PlayerGui"):WaitForChild("ScreenGui")
 --local functions
+local function freezePlayer()
+    local character = Player.Character or Player.CharacterAdded:Wait()
+    character.Humanoid.WalkSpeed = 0
+    character.Humanoid.JumpPower = 0
+end
+local function thawPlayer()
+    local character = Player.Character or Player.CharacterAdded:Wait()
+    character.Humanoid.WalkSpeed = WALK_SPEED
+    character.Humanoid.JumpPower = JUMP_POWER
+end
 --class
 local sys = {}
 
@@ -47,82 +60,11 @@ function getCamRotOffset()
     return _camRotOffset
 end
 
-
-local function freezePlayer()
-    local character = Player.Character or Player.CharacterAdded:Wait()
-    character.Humanoid.WalkSpeed = 0
-    character.Humanoid.JumpPower = 0
-end
-local function thawPlayer()
-    local character = Player.Character or Player.CharacterAdded:Wait()
-    character.Humanoid.WalkSpeed = WALK_SPEED
-    character.Humanoid.JumpPower = JUMP_POWER
-end
-
-function otherPlayerHit(plr : Player)
-	
-end
-
-function onInstanceHit(hit : BasePart, cf : CFrame)
-    local p = Instance.new("Part")
-    p.Anchored = true
-    p.Transparency = 1
-    p.CFrame = cf
-    p.Parent = hit.Parent
-    local smoke = Instance.new("Smoke")
-    smoke.Size = 2
-    smoke.Opacity = 0.06
-    smoke.Parent = p
-    task.delay(0.4, function()
-        smoke.Enabled = false 
-        task.delay(3, function()
-            smoke:Destroy()
-            p:Destroy()
-        end)
-    end)
-end
-
 function getWeaponFromPlayer(plr : Player)
     local char = Player.Character
+    assert(char)
     local gun = char:FindFirstChild("Gun") :: Tool?
     return if gun and gun:FindFirstChild("Handle") then gun else nil
-end
-
-function spawnBullet(startCf : CFrame)
-    local _maid = Maid.new()
-
-    local p = _maid:GiveTask(Instance.new("Part"))
-    p.Anchored = true
-    p.CanCollide = true
-    p.Size = Vector3.new(0.2,0.2,1)
-    p.CFrame = startCf-- handle.CFrame + handle.CFrame.LookVector*handle.Size.Y
-    p.Material = Enum.Material.Neon
-    p.Parent = workspace		
-
-    --bullet init
-    local i = 0
-    _maid:GiveTask(RunService.Stepped:Connect(function(t, dt : number)
-        i += dt*10
-        p.CFrame += p.CFrame.LookVector*3
-        local parts = workspace:GetPartsInPart(p)
-        if #parts > 0 then
-            for _,v in pairs(parts) do
-                local plrHit = game.Players:GetPlayerFromCharacter(v.Parent)
-                local _char = v.Parent
-                if plrHit then
-                    otherPlayerHit(plrHit)
-                    return
-                end
-                onInstanceHit(v, p.CFrame)
-            end
-            _maid:Destroy() 
-        end
-        if i >= 100 then
-            _maid:Destroy()
-        end
-    end))
-
-    return p
 end
 
 function sys.onWeaponEquipped(gun : Tool)
@@ -194,8 +136,6 @@ function sys.onWeaponEquipped(gun : Tool)
 		local animateScript = char:WaitForChild("Animate")
         local runAnim  = animateScript:WaitForChild("run"):WaitForChild("RunAnim") :: Animation
         local walkAnim  = animateScript:WaitForChild("walk"):WaitForChild("WalkAnim") :: Animation
-
-	
 
 		local function customInverseKinematicsCfAndAngles(a : number, b : number, startV3 : Vector3, targetV3 : Vector3): (CFrame, number, number, number)
             local c = math.clamp((startV3 - targetV3).Magnitude, 0, (a + b))
@@ -377,9 +317,10 @@ function shoot(weapon : Tool)
             setCamRotOffset(Vector3.new(0, 0, 0))
         end
     end)
-    spawnBullet(handle.CFrame*CFrame.new(0,0,-handle.Size.Z*0.5))
-
+    NetworkUtil.fireServer(ON_WEAPON_SHOT, handle.CFrame*CFrame.new(0,0,-handle.Size.Z*0.5))
+    --spawnBullet(handle.CFrame*CFrame.new(0,0,-handle.Size.Z*0.5))
 end
+
 function sys.init(maid : Maid)
     local _maid = maid:GiveTask(Maid.new())
     local inputHandler = maid:GiveTask(InputHandler.new())
