@@ -27,6 +27,7 @@ local WALK_SPEED = 15
 local JUMP_POWER = 50
 --remotes
 local ON_WEAPON_SHOT = "OnWeaponShot"
+local ON_AIMING = "OnAiming"
 --variables
 local camFOV = 70
 --references
@@ -61,11 +62,20 @@ function getCamRotOffset()
     return _camRotOffset
 end
 
-function getWeaponFromPlayer(plr : Player)
-    local char = Player.Character
+function getWeaponFromPlayer(plr : Player) : Tool?
+    local char = plr.Character
     assert(char)
-    local gun = char:FindFirstChild("Gun") :: Tool?
-    return if gun and gun:FindFirstChild("Handle") then gun else nil
+    for _,v in pairs(char:GetChildren()) do 
+        local weaponData = WeaponData.getWeaponDataByName(v.Name)
+        if weaponData then 
+            return v :: Tool
+        end
+    end
+    return nil
+end
+
+local function getIsAiming()
+    return UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) or UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
 end
 
 function sys.onWeaponEquipped(gun : Tool)
@@ -84,7 +94,7 @@ function sys.onWeaponEquipped(gun : Tool)
         
         local char = if gun.Parent and Players:GetPlayerFromCharacter(gun.Parent) then gun.Parent :: Model else nil; assert(char and char.PrimaryPart)
         local humanoid = char:FindFirstChild("Humanoid") :: Humanoid;  assert(humanoid)
-        local handle = gun:FindFirstChild("Handle") :: BasePart? ;assert(handle)
+        local handle = gun:FindFirstChild("GunMesh") :: BasePart? ;assert(handle)
 
         local leftLowerArm,leftUpperArm, leftHand, 
         rightLowerArm, rightUpperArm, rightHand = char:FindFirstChild("LeftLowerArm") :: BasePart, 
@@ -110,14 +120,14 @@ function sys.onWeaponEquipped(gun : Tool)
 		local a_r = rightLowerArm.Size.Y
 		local b_r = rightUpperArm.Size.Y
 		
-		local weld = Instance.new("Weld")
+		local weld = rightHand:WaitForChild("WeaponWeld") :: Weld --Instance.new("Weld")
 		weld.Part0 = handle
 		weld.Part1 = rightHand
 		weld.C0 = CFrame.new()
 			--*CFrame.new(0,0,handle.Size.Z*0.5)
 			--*CFrame.Angles(math.pi/2, 0, 0)
 		weld.C1 = CFrame.new()
-			--*CFrame.Angles(math.pi, 0, 0) --weld.Part1.CFrame:Inverse()*(weld.Part0.CFrame*weld.C0)
+			*CFrame.Angles(math.pi, 0, 0) --weld.Part1.CFrame:Inverse()*(weld.Part0.CFrame*weld.C0)
 		weld.Parent = rightHand
 		
 		
@@ -154,6 +164,8 @@ function sys.onWeaponEquipped(gun : Tool)
         local function resetJoints()
             leftShoulder.C0, leftElbow.C0, rightShoulder.C0, rightElbow.C0 = CFrame.new(leftShoulder.C0.Position),  CFrame.new(leftElbow.C0.Position), CFrame.new(rightShoulder.C0.Position), CFrame.new(rightElbow.C0.Position)
         end
+
+
         local function createAim()
             local out = _new("Frame")({
                 AnchorPoint = Vector2.new(0.5,0.5),
@@ -177,6 +189,9 @@ function sys.onWeaponEquipped(gun : Tool)
 
             Player.CameraMode = Enum.CameraMode.Classic
 
+            freezePlayer()
+            task.wait(0.15)
+            thawPlayer()
             resetJoints()
 
             camera.FieldOfView = camFOV
@@ -198,30 +213,21 @@ function sys.onWeaponEquipped(gun : Tool)
 		_maid:GiveTask(RunService.Stepped:Connect(function()
 			humanoid.CameraOffset = humanoidRootPart.CFrame:VectorToObjectSpace(camera.CFrame.UpVector*head.Size.Y*0.75 + camera.CFrame.LookVector*head.Size.Z*0.5 + getCamOffset()) --Vector3.new(0,char.Head.Size.Y*0.25,-char.Head.Size.Z)
 			camera.CFrame *= CFrame.Angles(getCamRotOffset().X, getCamRotOffset().Y, getCamOffset().Z)
-        
-			local isAiming = UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) or UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
-			
-			local rh_cf = char.PrimaryPart.CFrame:ToObjectSpace(rightHand.CFrame)
-			local x, y, z = rh_cf:ToOrientation()
-			
+          
+
 			local leftTorsoToArmPos = leftUpperArm.CFrame*(Vector3.new(0,leftUpperArm.Size.Y*0.5,0)) 
 			local rightTorsoToArmPos = rightUpperArm.CFrame*(Vector3.new(0,rightUpperArm.Size.Y*0.5,0)) 
 			
 			local deg = math.acos(((-(char.PrimaryPart.CFrame.LookVector*handle.Size.Z) + (rightTorsoToArmPos - char.PrimaryPart.Position) + Vector3.new(0, -1, 0)) ).Unit:Dot(-(char.PrimaryPart.CFrame.LookVector*handle.Size.Z).Unit))
-			local directionSourceCf =  if isAiming then camera.CFrame*CFrame.new(0, -handle.Size.Y*0.5, 0)
+			local directionSourceCf =  if getIsAiming() then camera.CFrame*CFrame.new(0, -handle.Size.Y*0.75, 0)
 				else (char.PrimaryPart.CFrame*CFrame.Angles(-deg, 0, 0))
 			
-			local destPos : Vector3 = directionSourceCf*Vector3.new(0, if isAiming then -handle.Size.Y*0.5 else 0, -handle.Size.Z)
-				
+			--local destPos : Vector3 = directionSourceCf*Vector3.new(0, if getIsAiming() then -handle.Size.Y*0.5 else 0, -handle.Size.Z)
+			local destPos = directionSourceCf*Vector3.new(0, 0, -handle.Size.Z*0.5)	
             local rayRange = 1000
             local ray = workspace:Raycast(handle.CFrame*Vector3.new(0,0,handle.Size.Z*-0.5), handle.CFrame.LookVector*rayRange)
             local aimWorldPos = if ray then ray.Position else nil
 
-			weld.C1 = weld.C1:Lerp(
-				CFrame.new(0,-handle.Size.Z*0.5,0)*((rightHand.CFrame:Inverse()*(directionSourceCf)) - (rightHand.CFrame:Inverse()*(directionSourceCf)).Position), 
-				0.3
-			)
-		
 			local c_l = math.clamp((leftTorsoToArmPos - destPos).Magnitude, 0, (a_l + b_l))
 			local c_r = math.clamp((rightTorsoToArmPos - destPos).Magnitude, 0, (a_r + b_r))
 
@@ -237,7 +243,10 @@ function sys.onWeaponEquipped(gun : Tool)
             local cfrot_r, A_r, B_r, C_r = customInverseKinematicsCfAndAngles(a_r, b_r, rightTorsoToArmPos, handDestPos)
           
             --hand dest pos check
-
+			weld.C1 = weld.C1:Lerp(
+				rightHand.CFrame:Inverse()*directionSourceCf*CFrame.new(0,0,-handle.Size.Z*0.5), 
+				0.3
+			)
 			leftShoulder.C0 = leftShoulder.C0:Lerp(
 				CFrame.new(leftShoulder.C0.Position)*cfrot_l*CFrame.Angles(-A_l, 0, 0), 0.3
 			)
@@ -252,7 +261,7 @@ function sys.onWeaponEquipped(gun : Tool)
 				CFrame.new(rightElbow.C0.Position)*CFrame.Angles(-C_r + math.rad(180) ,0, 0), 0.3
 			) 
 			
-			if isAiming then
+			if getIsAiming() then
 				camera.FieldOfView = MathUtil.lerp(camera.FieldOfView , camFOV*1.04, 0.25)
 			else
 				camera.FieldOfView = MathUtil.lerp(camera.FieldOfView*1.04, camFOV, 0.25)
@@ -260,7 +269,7 @@ function sys.onWeaponEquipped(gun : Tool)
 
             local hitV3 = aimWorldPos or (handle.Position + handle.CFrame.LookVector*rayRange)
             local screenV3 = camera:WorldToViewportPoint(hitV3)
-            aimFrame.Visible = isAiming
+            aimFrame.Visible = getIsAiming()
             aimFrame.Position = UDim2.fromOffset(screenV3.X, screenV3.Y) 
 
             -- local p = Instance.new("Part")
@@ -301,7 +310,7 @@ function shoot(weapon : Tool)
     local i = 0
 
     local camera = workspace.CurrentCamera
-    local handle = weapon:FindFirstChild("Handle") :: BasePart?; assert(handle)
+    local handle = weapon:FindFirstChild("GunMesh") :: BasePart?; assert(handle)
     
     camera.CFrame = camera.CFrame*CFrame.Angles(math.rad(math.random(2,5)), 0, 0)
 
@@ -331,7 +340,7 @@ function sys.init(maid : Maid)
         assert(char)
         local weapon = getWeaponFromPlayer(Player)
         assert(weapon)
-        local handle = weapon:FindFirstChild("Handle") :: BasePart?; assert(handle)
+        local handle = weapon:FindFirstChild("GunMesh") :: BasePart?; assert(handle)
 
         do
             local t = 0
@@ -350,6 +359,11 @@ function sys.init(maid : Maid)
         onGunActivatedEvent()
     end, function() 
         _maid.Shoot = nil
+    end)
+    inputHandler:Map("Aiming", "Keyboard", {Enum.UserInputType.MouseButton1}, "Hold", function()
+        NetworkUtil.fireServer(ON_AIMING, getIsAiming())
+    end, function() 
+        NetworkUtil.fireServer(ON_AIMING, getIsAiming())
     end)
 
     onCharAdded(Player.Character or Player.CharacterAdded:Wait())

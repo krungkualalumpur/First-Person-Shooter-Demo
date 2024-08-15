@@ -25,10 +25,13 @@ data.Gun = {
 } 
 
 local util = {}
-function util.getWeaponDataByName(weaponName : string): WeaponData
-    assert(data[weaponName], "Bad weapon name!")
-
-    return table.freeze(table.clone(data[weaponName]))
+function util.getWeaponDataByName(weaponName : string): WeaponData?
+    local raw = data[weaponName]
+    if raw then 
+        return  table.freeze(table.clone(raw))
+    else
+        return nil
+    end
 end
 
 function util.getWeaponData(gunInstance : Instance) : WeaponData
