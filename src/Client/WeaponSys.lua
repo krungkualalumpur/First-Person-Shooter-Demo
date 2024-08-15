@@ -27,7 +27,11 @@ local WALK_SPEED = 15
 local JUMP_POWER = 50
 --remotes
 local ON_WEAPON_SHOT = "OnWeaponShot"
-local ON_AIMING = "OnAiming"
+local ON_WEAPON_EQUIP = "OnWeaponEquip"
+
+-- local ON_AIMING = "OnAiming"
+
+local GET_CLIENT_WEAPON_STATE_INFO = "GetClientWeaponStateInfo"
 --variables
 local camFOV = 70
 --references
@@ -90,11 +94,12 @@ function sys.onWeaponEquipped(gun : Tool)
         local _Computed = _fuse.Computed
         local _Value = _fuse.Value
 
-        local camera = workspace.CurrentCamera
         
         local char = if gun.Parent and Players:GetPlayerFromCharacter(gun.Parent) then gun.Parent :: Model else nil; assert(char and char.PrimaryPart)
         local humanoid = char:FindFirstChild("Humanoid") :: Humanoid;  assert(humanoid)
         local handle = gun:FindFirstChild("GunMesh") :: BasePart? ;assert(handle)
+       
+        local camera = if char == Player.Character then workspace.CurrentCamera else nil
 
         local leftLowerArm,leftUpperArm, leftHand, 
         rightLowerArm, rightUpperArm, rightHand = char:FindFirstChild("LeftLowerArm") :: BasePart, 
@@ -120,7 +125,7 @@ function sys.onWeaponEquipped(gun : Tool)
 		local a_r = rightLowerArm.Size.Y
 		local b_r = rightUpperArm.Size.Y
 		
-		local weld = rightHand:WaitForChild("WeaponWeld") :: Weld --Instance.new("Weld")
+		local weld = _maid:GiveTask(Instance.new("Weld")) --rightHand:WaitForChild("WeaponWeld") :: Weld --Instance.new("Weld")
 		weld.Part0 = handle
 		weld.Part1 = rightHand
 		weld.C0 = CFrame.new()
@@ -129,7 +134,6 @@ function sys.onWeaponEquipped(gun : Tool)
 		weld.C1 = CFrame.new()
 			*CFrame.Angles(math.pi, 0, 0) --weld.Part1.CFrame:Inverse()*(weld.Part0.CFrame*weld.C0)
 		weld.Parent = rightHand
-		
 		
 		Player.CameraMode = Enum.CameraMode.LockFirstPerson
 		humanoid.CameraOffset = Vector3.new(0, 0, -1) 
@@ -211,15 +215,16 @@ function sys.onWeaponEquipped(gun : Tool)
         resetJoints()
         
 		_maid:GiveTask(RunService.Stepped:Connect(function()
-			humanoid.CameraOffset = humanoidRootPart.CFrame:VectorToObjectSpace(camera.CFrame.UpVector*head.Size.Y*0.75 + camera.CFrame.LookVector*head.Size.Z*0.5 + getCamOffset()) --Vector3.new(0,char.Head.Size.Y*0.25,-char.Head.Size.Z)
-			camera.CFrame *= CFrame.Angles(getCamRotOffset().X, getCamRotOffset().Y, getCamOffset().Z)
-          
+			if camera then 
+                humanoid.CameraOffset = humanoidRootPart.CFrame:VectorToObjectSpace(camera.CFrame.UpVector*head.Size.Y*0.75 + camera.CFrame.LookVector*head.Size.Z*0.5 + getCamOffset()) --Vector3.new(0,char.Head.Size.Y*0.25,-char.Head.Size.Z)
+			    camera.CFrame *= CFrame.Angles(getCamRotOffset().X, getCamRotOffset().Y, getCamOffset().Z)
+            end
 
 			local leftTorsoToArmPos = leftUpperArm.CFrame*(Vector3.new(0,leftUpperArm.Size.Y*0.5,0)) 
 			local rightTorsoToArmPos = rightUpperArm.CFrame*(Vector3.new(0,rightUpperArm.Size.Y*0.5,0)) 
 			
 			local deg = math.acos(((-(char.PrimaryPart.CFrame.LookVector*handle.Size.Z) + (rightTorsoToArmPos - char.PrimaryPart.Position) + Vector3.new(0, -1, 0)) ).Unit:Dot(-(char.PrimaryPart.CFrame.LookVector*handle.Size.Z).Unit))
-			local directionSourceCf =  if getIsAiming() then camera.CFrame*CFrame.new(0, -handle.Size.Y*0.75, 0)
+			local directionSourceCf =  if getIsAiming() and camera then camera.CFrame*CFrame.new(0, -handle.Size.Y, 0)
 				else (char.PrimaryPart.CFrame*CFrame.Angles(-deg, 0, 0))
 			
 			--local destPos : Vector3 = directionSourceCf*Vector3.new(0, if getIsAiming() then -handle.Size.Y*0.5 else 0, -handle.Size.Z)
@@ -232,7 +237,7 @@ function sys.onWeaponEquipped(gun : Tool)
 			local c_r = math.clamp((rightTorsoToArmPos - destPos).Magnitude, 0, (a_r + b_r))
 
 			for _,v in pairs(animator:GetPlayingAnimationTracks()) do
-				if not v.Name:lower():find("walk") and not v.Name:lower():find("run") then 
+				if not v.Name:lower():find("walk") and not v.Name:lower():find("run") then  
 				    v:Stop(0)
 				end
 			end
@@ -244,7 +249,7 @@ function sys.onWeaponEquipped(gun : Tool)
           
             --hand dest pos check
 			weld.C1 = weld.C1:Lerp(
-				rightHand.CFrame:Inverse()*directionSourceCf*CFrame.new(0,0,-handle.Size.Z*0.5), 
+				rightHand.CFrame:Inverse()*directionSourceCf*CFrame.new(0,0, -handle.Size.Z*0.5), 
 				0.3
 			)
 			leftShoulder.C0 = leftShoulder.C0:Lerp(
@@ -267,13 +272,17 @@ function sys.onWeaponEquipped(gun : Tool)
 				camera.FieldOfView = MathUtil.lerp(camera.FieldOfView*1.04, camFOV, 0.25)
 			end
 
-            local hitV3 = aimWorldPos or (handle.Position + handle.CFrame.LookVector*rayRange)
-            local screenV3 = camera:WorldToViewportPoint(hitV3)
-            aimFrame.Visible = getIsAiming()
-            aimFrame.Position = UDim2.fromOffset(screenV3.X, screenV3.Y) 
-
+            if camera then 
+                local hitV3 = aimWorldPos or (handle.Position + handle.CFrame.LookVector*rayRange)
+                local screenV3 = camera:WorldToViewportPoint(hitV3)
+                aimFrame.Visible = getIsAiming()
+                aimFrame.Position = UDim2.fromOffset(screenV3.X, screenV3.Y) 
+            end
             -- local p = Instance.new("Part")
-            -- p.Position = hitV3
+            -- p.CanCollide = false 
+            -- p.Size = Vector3.one*1
+            -- p.Transparency = 0.5
+            -- p.Position = destPos
             -- p.Anchored = true
             -- p.Parent = workspace
             -- task.delay(0.1, function()
@@ -300,6 +309,18 @@ function onCharAdded(char : Model)
 
     _maid:GiveTask(char.AncestryChanged:Connect(function()
         if char.Parent == nil then
+            _maid:Destroy()
+        end
+    end))
+end
+
+function onPlayerAdded(plr : Player)
+    local _maid = Maid.new()
+
+    onCharAdded(Player.Character or Player.CharacterAdded:Wait())
+    _maid:GiveTask(Player.CharacterAdded:Connect(onCharAdded))
+    _maid:GiveTask(Player.AncestryChanged:Connect(function() 
+        if Player.Parent == nil then 
             _maid:Destroy()
         end
     end))
@@ -360,14 +381,31 @@ function sys.init(maid : Maid)
     end, function() 
         _maid.Shoot = nil
     end)
-    inputHandler:Map("Aiming", "Keyboard", {Enum.UserInputType.MouseButton1}, "Hold", function()
-        NetworkUtil.fireServer(ON_AIMING, getIsAiming())
-    end, function() 
-        NetworkUtil.fireServer(ON_AIMING, getIsAiming())
+    -- inputHandler:Map("Aiming", "Keyboard", {Enum.UserInputType.MouseButton1}, "Hold", function()
+    --     NetworkUtil.fireServer(ON_AIMING, getIsAiming())
+    -- end, function() 
+    --     NetworkUtil.fireServer(ON_AIMING, getIsAiming())
+    -- end)
+
+    NetworkUtil.onClientInvoke(GET_CLIENT_WEAPON_STATE_INFO, function(plr : Player)
+        local camera = workspace.CurrentCamera
+        assert(camera)
+        return {
+            CFrame = camera.CFrame,
+            IsAiming = getIsAiming()
+        }
     end)
 
-    onCharAdded(Player.Character or Player.CharacterAdded:Wait())
-    maid:GiveTask(Player.CharacterAdded:Connect(onCharAdded))
+    -- maid:GiveTask(NetworkUtil.onClientEvent(ON_WEAPON_EQUIP, function(plrEquipping : Player) 
+    --     if plrEquipping == Player then return end 
+    -- end))
+
+    for _, plr : Player in pairs(Players:GetPlayers()) do 
+        onPlayerAdded(plr)
+    end
+
+    maid:GiveTask(Players.PlayerAdded:Connect(onPlayerAdded))
+ 
 end
 
 return sys
