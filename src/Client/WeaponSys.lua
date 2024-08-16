@@ -159,8 +159,8 @@ function sys.onWeaponEquipped(gun : Tool)
 		end
 		
 		local animateScript = char:WaitForChild("Animate")
-        local runAnim  = animateScript:WaitForChild("run"):WaitForChild("RunAnim") :: Animation
-        local walkAnim  = animateScript:WaitForChild("walk"):WaitForChild("WalkAnim") :: Animation
+        local runAnim = animateScript:WaitForChild("run"):FindFirstChildWhichIsA("Animation") :: Animation
+        local walkAnim = animateScript:WaitForChild("walk"):FindFirstChildWhichIsA("Animation") :: Animation
 
 		local function customInverseKinematicsCfAndAngles(a : number, b : number, startV3 : Vector3, targetV3 : Vector3): (CFrame, number, number, number)
             local c = math.clamp((startV3 - targetV3).Magnitude, 0, (a + b))
@@ -355,22 +355,24 @@ function shoot(weapon : Tool)
     local camera = workspace.CurrentCamera
     local handle = weapon:FindFirstChild("GunMesh") :: BasePart?; assert(handle)
     
-    camera.CFrame = camera.CFrame*CFrame.Angles(math.rad(math.random(2,5)), 0, 0)
+    local success = NetworkUtil.invokeServer(ON_WEAPON_SHOT, handle.CFrame*CFrame.new(0,0,-handle.Size.Z*0.5))
+    if success then 
+        local offsetAmp = math.random(1, 3)/10
+        local rotOffsetAmp = math.random(10, 40)/1000
 
-    local offsetAmp = math.random(1, 3)/10
-    local rotOffsetAmp = math.random(10, 40)/1000
+        camera.CFrame = camera.CFrame*CFrame.Angles(math.rad(math.random(2,5)), 0, 0)
 
-    conn = RunService.Stepped:Connect(function()
-        i += 0.3
-        setCamOffset(Vector3.new(-math.sin(i)*offsetAmp, 0, 0))
-        setCamRotOffset(Vector3.new(math.sin(i*2)*rotOffsetAmp, 0, 0))
-        if i >= math.pi then
-            if conn then conn:Disconnect() end
-            setCamOffset(Vector3.new(0, 0, 0))
-            setCamRotOffset(Vector3.new(0, 0, 0))
-        end
-    end)
-    NetworkUtil.fireServer(ON_WEAPON_SHOT, handle.CFrame*CFrame.new(0,0,-handle.Size.Z*0.5))
+        conn = RunService.Stepped:Connect(function()
+            i += 0.3
+            setCamOffset(Vector3.new(-math.sin(i)*offsetAmp, 0, 0))
+            setCamRotOffset(Vector3.new(math.sin(i*2)*rotOffsetAmp, 0, 0))
+            if i >= math.pi then
+                if conn then conn:Disconnect() end
+                setCamOffset(Vector3.new(0, 0, 0))
+                setCamRotOffset(Vector3.new(0, 0, 0))
+            end
+        end)
+    end
     --spawnBullet(handle.CFrame*CFrame.new(0,0,-handle.Size.Z*0.5))
 end
 
@@ -385,10 +387,11 @@ function sys.init(maid : Maid)
         assert(weapon)
         local handle = weapon:FindFirstChild("GunMesh") :: BasePart?; assert(handle)
 
+        local weaponData = WeaponData.getWeaponData(weapon)
         do
-            local t = 0
+            local t = weaponData.RateOfFire
             _maid.Shoot = RunService.Stepped:Connect(function(_, dt : number)
-                if t >= 0.25 then 
+                if t >= weaponData.RateOfFire then 
                     t = 0
                     shoot(weapon)
                 end
@@ -408,7 +411,11 @@ function sys.init(maid : Maid)
         local neck = head:FindFirstChild("Neck") :: Motor6D?; assert(neck)
 
         local relativeOrientation = (char.PrimaryPart.CFrame:Inverse()*directionCf) - (char.PrimaryPart.CFrame:Inverse()*directionCf).Position
-        neck.C0 = CFrame.new(neck.C0.Position)*relativeOrientation
+        local t = TweenService:Create(neck, TweenInfo.new(0.25), {
+            C0 = CFrame.new(neck.C0.Position)*relativeOrientation
+        })
+        t:Play()
+        t:Destroy()
     end
 
     inputHandler:Map("OnGunActivatedEventPC", "Keyboard", {Enum.UserInputType.MouseButton1}, "Hold", function() 

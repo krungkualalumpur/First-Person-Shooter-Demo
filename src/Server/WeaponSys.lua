@@ -171,6 +171,27 @@ function onCharacterAdded(char : Model)
     _maid:GiveTask(char.ChildAdded:Connect(onChildAdded))
     _maid:GiveTask(char.ChildRemoved:Connect(onChildRemoved))
 
+    do
+        local prevHealth = humanoid.Health
+        local isDead = false
+        _maid:GiveTask(humanoid.HealthChanged:Connect(function(health : number)
+            local delta =  health - prevHealth
+            if health == 0 then 
+                if not isDead then 
+                    isDead = true
+                    playSound(1978589648, char:WaitForChild("HumanoidRootPart"))
+                end
+            else
+                if delta < -25 then
+                    playSound(1007368252, char:WaitForChild("HumanoidRootPart"), 3)
+                elseif delta >= -25 and delta < 0 then
+                    playSound(8011792922, char:WaitForChild("HumanoidRootPart"), 2)
+                end
+            end
+            prevHealth = health
+        end))
+    end
+
     _maid:GiveTask(char.AncestryChanged:Connect(function()
         if char.Parent == nil then
             _maid:Destroy()
@@ -259,7 +280,7 @@ function onInstanceHit(hit : BasePart, cf : CFrame)
     createFx()
 end
 
-function otherHumanoidHit(char : Model, hitCf : CFrame)
+function otherHumanoidHit(char : Model, hitPart : BasePart, hitCf : CFrame)
     local function createFx()
         local p = Instance.new("Part")
         p.Anchored = true
@@ -270,29 +291,30 @@ function otherHumanoidHit(char : Model, hitCf : CFrame)
 
         local smoke = Instance.new("Smoke")
         smoke.Color = Color3.fromRGB(255,50,50)
-        smoke.Size = 1.5
-        smoke.Opacity = 1
+        smoke.Size = 0.8
+        smoke.Opacity = 4
         smoke.Parent = p
-        local t = TweenService:Create(smoke, TweenInfo.new(5), {
+        local t = TweenService:Create(smoke, TweenInfo.new(1), {
             Opacity = 0
         })
         t:Play()    
         t:Destroy()
         task.delay(0.4, function()
             smoke.Enabled = false 
-            task.delay(5, function()
+            task.delay(1, function()
                 smoke:Destroy()
                 p:Destroy()
             end)
-            print("Destroyah!")
         end)
-        print(p)
     end
 
     local plr = Players:GetPlayerFromCharacter(char)
     local humanoid = char:FindFirstChild("Humanoid") :: Humanoid?
+    local damage = if hitPart.Name == "Head" then 60 else 15
+
     assert(humanoid)
-    humanoid.Health -= 10
+    humanoid.Health -= damage
+    
     createFx()
 end
     
@@ -302,30 +324,6 @@ function spawnBullet(startCf : CFrame)
     local pcf  = startCf
 
     local i = 0
-
-    --local ray = workspace:Raycast(startCf.Position, startCf.LookVector*range)
-    --local travelTime : number, hitPos : Vector3, hitInstance : Instance? = range/2856.8, startCf.Position + startCf.LookVector*range, nil
-    --if ray then 
-    --    hitPos, hitInstance = ray.Position, ray.Instance
-    --    travelTime = ray.Distance/2856.8
-    --end
-
-    --_maid:GiveTask(RunService.Stepped:Connect(function(t, dt : number)
-    --    i += dt
-    --    if i >= travelTime then
-    --        _maid:Destroy()
-
-    --        if hitInstance and hitInstance:IsA("BasePart") then 
-    --            local plrHit = game.Players:GetPlayerFromCharacter(hitInstance.Parent)
-    --            local _char = hitInstance.Parent
-    --            if plrHit then
-    --                otherPlayerHit(plrHit)
-    --                return
-    --            end
-    --            onInstanceHit(hitInstance, CFrame.new(hitPos)*(hitInstance.CFrame - hitInstance.CFrame.Position))
-    --        end
-    --    end
-    --end))
 
      local p = _maid:GiveTask(Instance.new("Part"))
      p.Name = "Bullet"
@@ -349,9 +347,12 @@ function spawnBullet(startCf : CFrame)
 
          if ray then 
             local hit = ray.Instance
-			local char = if hit.Parent and hit.Parent:FindFirstChild("Humanoid") then hit.Parent else nil
-			if char then
-				otherHumanoidHit(char :: Model, CFrame.new(ray.Position, ray.Position + ray.Normal))
+			local char = if hit.Parent and hit.Parent:FindFirstChild("Humanoid") then hit.Parent 
+                elseif hit.Parent and hit.Parent.Parent and hit.Parent.Parent:FindFirstChild("Humanoid") then hit.Parent.Parent
+            else nil
+			
+            if char then
+				otherHumanoidHit(char :: Model, hit, CFrame.new(ray.Position, ray.Position + ray.Normal))
             else
                 onInstanceHit(hit, CFrame.new(ray.Position, ray.Position + ray.Normal))
 			end
@@ -389,7 +390,7 @@ function spawnBullet(startCf : CFrame)
 		if hit.CanCollide and hit.Transparency < 1 then 
 			local char = if hit.Parent and hit.Parent:FindFirstChild("Humanoid") then hit.Parent else nil
 			if char then
-				otherHumanoidHit(char :: Model, pcf)
+				otherHumanoidHit(char :: Model, hit, pcf)
             else
                 onInstanceHit(hit, pcf)
 			end
@@ -397,7 +398,7 @@ function spawnBullet(startCf : CFrame)
 		end
 	end))
 
-     return p
+    return p
 end
 function getWeaponFromPlayer(plr : Player) : Tool?
     local char = plr.Character
@@ -423,16 +424,26 @@ function onGunShot(
     local startCf = clampBulletStartCFrame(char.PrimaryPart.CFrame, shotPosCf)
     local gun = getWeaponFromPlayer(plr)
     assert(gun)
-    -- local weaponData = WeaponData.getWeaponData(gun)
-    -- local t = 0
-    local _maid = Maid.new()
+    local weaponData = WeaponData.getWeaponData(gun)
+    assert(weaponData)
 
-    local handle = gun:WaitForChild("GunMesh") :: BasePart
+    local shotTimeStampKey = "ShotTimestamp" 
+    local lastTimeShot = gun:GetAttribute(shotTimeStampKey) :: number? or 0 
+    local timeNow = DateTime.now().UnixTimestampMillis/1000
     
-  	local bullet =  spawnBullet(startCf)
-	--  bullet:SetNetworkOwner(plr)
-	NetworkUtil.fireAllClients(ON_PLAYER_AIM_DIRECTION_UPDATE, plr, shotPosCf)
-    playSound(1905367471, handle, 2)
+    if weaponData.RateOfFire <= (timeNow - lastTimeShot) then 
+        gun:SetAttribute(shotTimeStampKey, timeNow)
+
+        local handle = gun:WaitForChild("GunMesh") :: BasePart
+    
+        task.spawn(function() spawnBullet(startCf) end)
+
+        NetworkUtil.fireAllClients(ON_PLAYER_AIM_DIRECTION_UPDATE, plr, shotPosCf)
+        playSound(1905367471, handle, 2)
+        return true
+    end
+   
+    return false
 end
 function sys.init(maid : Maid)
     for _,v in pairs(CollectionService:GetTagged("Gun")) do
@@ -449,7 +460,6 @@ function sys.init(maid : Maid)
     
     maid:GiveTask(Players.PlayerAdded:Connect(onPlayerAdded))
     --networks
-    maid:GiveTask(NetworkUtil.onServerEvent(ON_WEAPON_SHOT, onGunShot))
     maid:GiveTask(NetworkUtil.onServerEvent(ON_AIMING, function(plr : Player, aiming : boolean)  
         local playerState = getPlayerState(plr)
         
@@ -457,6 +467,8 @@ function sys.init(maid : Maid)
             aiming
         ))
     end))
+
+    NetworkUtil.onServerInvoke(ON_WEAPON_SHOT, onGunShot)
 
     NetworkUtil.getRemoteEvent(ON_WEAPON_EQUIP)
     NetworkUtil.getRemoteEvent(ON_PLAYER_AIM_DIRECTION_UPDATE)
