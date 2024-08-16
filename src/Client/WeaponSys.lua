@@ -31,7 +31,10 @@ local WALK_SPEED = 15
 local JUMP_POWER = 50
 --remotes
 local ON_WEAPON_SHOT = "OnWeaponShot"
+local ON_WEAPON_SHOT_START = "OnWeaponShotStart"
+local ON_WEAPON_SHOT_END = "OnWeaponShotEnd"
 local ON_WEAPON_EQUIP = "OnWeaponEquip"
+local ON_WEAPON_SHOT_EFFECT = "OnWeaponShotEffect"
 
 local ON_AIMING = "OnAiming"
 local ON_PLAYER_AIM_DIRECTION_UPDATE = "OnPlayerAimDirectionUpdate"
@@ -348,32 +351,35 @@ function onPlayerAdded(plr : Player)
     end))
 end
 
-function shoot(weapon : Tool)
+function shootEffect(weaponData : WeaponData.WeaponData)
     local conn
     local i = 0
 
     local camera = workspace.CurrentCamera
+
+    local offsetAmp = math.random(1, 3)/10
+    local rotOffsetAmp = math.random(10, 40)/1000
+
+    camera.CFrame = camera.CFrame*CFrame.Angles(math.rad(math.random(2,5)), 0, 0)
+
+    conn = RunService.Stepped:Connect(function()
+        i += 0.3
+        setCamOffset(Vector3.new(-math.sin(i)*offsetAmp, 0, 0))
+        setCamRotOffset(Vector3.new(math.sin(i*2)*rotOffsetAmp, 0, 0))
+        if i >= math.pi then
+            if conn then conn:Disconnect() end
+            setCamOffset(Vector3.new(0, 0, 0))
+            setCamRotOffset(Vector3.new(0, 0, 0))
+        end
+    end)
+end
+
+function shoot(weapon : Tool)
     local handle = weapon:FindFirstChild("GunMesh") :: BasePart?; assert(handle)
-    
-    local success = NetworkUtil.invokeServer(ON_WEAPON_SHOT, handle.CFrame*CFrame.new(0,0,-handle.Size.Z*0.5))
-    if success then 
-        local offsetAmp = math.random(1, 3)/10
-        local rotOffsetAmp = math.random(10, 40)/1000
+    -- local weaponData = WeaponData.getWeaponDataByName(weapon.Name)
+    -- assert(weaponData)
 
-        camera.CFrame = camera.CFrame*CFrame.Angles(math.rad(math.random(2,5)), 0, 0)
-
-        conn = RunService.Stepped:Connect(function()
-            i += 0.3
-            setCamOffset(Vector3.new(-math.sin(i)*offsetAmp, 0, 0))
-            setCamRotOffset(Vector3.new(math.sin(i*2)*rotOffsetAmp, 0, 0))
-            if i >= math.pi then
-                if conn then conn:Disconnect() end
-                setCamOffset(Vector3.new(0, 0, 0))
-                setCamRotOffset(Vector3.new(0, 0, 0))
-            end
-        end)
-    end
-    --spawnBullet(handle.CFrame*CFrame.new(0,0,-handle.Size.Z*0.5))
+   NetworkUtil.fireServer(ON_WEAPON_SHOT, handle.CFrame*CFrame.new(0,0,-handle.Size.Z*0.5))
 end
 
 function sys.init(maid : Maid)
@@ -387,19 +393,28 @@ function sys.init(maid : Maid)
         assert(weapon)
         local handle = weapon:FindFirstChild("GunMesh") :: BasePart?; assert(handle)
 
-        local weaponData = WeaponData.getWeaponData(weapon)
+        local weaponData = WeaponData.getWeaponDataByName(weapon.Name)
+        assert(weaponData)
+        
+        -- NetworkUtil.invokeServer(ON_WEAPON_SHOT_START, handle.CFrame*CFrame.new(0,0,-handle.Size.Z*0.5))
         do
-            local t = weaponData.RateOfFire
-            _maid.Shoot = RunService.Stepped:Connect(function(_, dt : number)
-                if t >= weaponData.RateOfFire then 
-                    t = 0
+            local t = tick() - weaponData.RateOfFire
+            _maid.Shoot = RunService.RenderStepped:Connect(function()
+                --print(tick() - t, ">", weaponData.RateOfFire)
+                if tick() - t  > weaponData.RateOfFire then 
+                    print("puei")
+                    t = tick()
                     shoot(weapon)
                 end
-                t += dt
             end)
-            shoot(weapon)
         end
     end
+
+    local function onGunDeactivatedEvent()
+        _maid.Shoot = nil
+        --NetworkUtil.invokeServer(ON_WEAPON_SHOT_END)
+    end
+
     local function onAim(isAiming : boolean)
         NetworkUtil.fireServer(ON_AIMING, isAiming)
     end
@@ -421,7 +436,7 @@ function sys.init(maid : Maid)
     inputHandler:Map("OnGunActivatedEventPC", "Keyboard", {Enum.UserInputType.MouseButton1}, "Hold", function() 
         onGunActivatedEvent()
     end, function() 
-        _maid.Shoot = nil
+        onGunDeactivatedEvent()
     end)
 
     inputHandler:Map("OnGunAim1PC", "Keyboard", {Enum.UserInputType.MouseButton2}, "Hold", function()
@@ -442,6 +457,8 @@ function sys.init(maid : Maid)
             updateHeadDirection(otherPlr, dirCf)
         end
     end))
+
+    maid:GiveTask(NetworkUtil.onClientEvent(ON_WEAPON_SHOT_EFFECT, shootEffect))
 
     NetworkUtil.onClientInvoke(GET_CLIENT_WEAPON_STATE_INFO, function()
         local camera = workspace.CurrentCamera

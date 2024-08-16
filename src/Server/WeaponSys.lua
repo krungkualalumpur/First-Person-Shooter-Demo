@@ -30,9 +30,13 @@ type WeaponData = WeaponData.WeaponData
 --constants
 --remotes
 local ON_WEAPON_SHOT = "OnWeaponShot"
+local ON_WEAPON_SHOT_START = "OnWeaponShotStart"
+local ON_WEAPON_SHOT_END = "OnWeaponShotEnd"
+
 local ON_WEAPON_EQUIP = "OnWeaponEquip"
 local ON_AIMING = "OnAiming"
 local ON_PLAYER_AIM_DIRECTION_UPDATE = "OnPlayerAimDirectionUpdate"
+local ON_WEAPON_SHOT_EFFECT = "OnWeaponShotEffect"
 
 local GET_CLIENT_WEAPON_STATE_INFO = "GetClientWeaponStateInfo"
 --variables
@@ -59,6 +63,8 @@ end
 
 --class
 local sys = {}
+
+local maid = Maid.new()
 
 function createPlayerState(
     isAiming : boolean) : PlayerState
@@ -413,6 +419,35 @@ function getWeaponFromPlayer(plr : Player) : Tool?
 end
 
 function onGunShot(
+    plr : Player,
+    startCf :CFrame)    
+    local gun = getWeaponFromPlayer(plr)
+    assert(gun)
+    local weaponData = WeaponData.getWeaponDataByName(gun.Name); assert(weaponData)
+    local handle = gun:WaitForChild("GunMesh") :: BasePart
+    local char = plr.Character
+    assert(char and char.PrimaryPart)
+
+    local shotTimeStampKey = "ShotTimestamp" 
+    local lastShotTime = gun:GetAttribute(shotTimeStampKey) :: number? or (0)
+
+    local function shoot()
+        startCf = clampBulletStartCFrame(char.PrimaryPart.CFrame, startCf)
+        --NetworkUtil.fireAllClients(ON_PLAYER_AIM_DIRECTION_UPDATE, plr, shotPosCf)
+        task.spawn(function() spawnBullet(startCf) end)
+
+        NetworkUtil.fireClient(ON_WEAPON_SHOT_EFFECT, plr, weaponData)
+        playSound(1905367471, handle, 2)
+    end
+
+    -- print("fuyoh", (DateTime.now().UnixTimestampMillis/1000) - lastShotTime, " > ", weaponData.RateOfFire*0.95)
+    if (DateTime.now().UnixTimestampMillis/1000) - lastShotTime > weaponData.RateOfFire*0.99 then 
+        gun:SetAttribute(shotTimeStampKey, (DateTime.now().UnixTimestampMillis/1000))
+        shoot()
+    end
+end
+
+function onGunShotStart(
     plr : Player, 
     shotPosCf: CFrame -- temporary!
     )
@@ -421,30 +456,37 @@ function onGunShot(
     local head = char:FindFirstChild("Head")
     assert(head)
     
-    local startCf = clampBulletStartCFrame(char.PrimaryPart.CFrame, shotPosCf)
     local gun = getWeaponFromPlayer(plr)
     assert(gun)
-    local weaponData = WeaponData.getWeaponData(gun)
+    local weaponData = WeaponData.getWeaponDataByName(gun.Name)
     assert(weaponData)
-
+    local handle = gun:WaitForChild("GunMesh") :: BasePart
     local shotTimeStampKey = "ShotTimestamp" 
-    local lastTimeShot = gun:GetAttribute(shotTimeStampKey) :: number? or 0 
-    local timeNow = DateTime.now().UnixTimestampMillis/1000
     
-    if weaponData.RateOfFire <= (timeNow - lastTimeShot) then 
-        gun:SetAttribute(shotTimeStampKey, timeNow)
-
-        local handle = gun:WaitForChild("GunMesh") :: BasePart
     
-        task.spawn(function() spawnBullet(startCf) end)
+    local lastShotTime = handle:GetAttribute(shotTimeStampKey) :: number or (tick() - weaponData.RateOfFire)
+    local t = lastShotTime 
 
-        NetworkUtil.fireAllClients(ON_PLAYER_AIM_DIRECTION_UPDATE, plr, shotPosCf)
-        playSound(1905367471, handle, 2)
-        return true
-    end
+    maid.Shoot = RunService.Stepped:Connect(function() 
+        local timeNow = tick() 
+    
+        if weaponData.RateOfFire <= (timeNow - t) then --make this loop somehow
+            t = tick()
+            handle:SetAttribute(shotTimeStampKey, t)
+            print("befo ")
+
+            onGunShot(plr, shotPosCf)
+        end
+    end)
    
-    return false
+    return nil
 end
+
+function onGunShotEnd(plr : Player)
+    maid.Shoot = nil
+    return nil
+end
+
 function sys.init(maid : Maid)
     for _,v in pairs(CollectionService:GetTagged("Gun")) do
         local weaponData = WeaponData.getWeaponDataByName(v.Name)
@@ -468,12 +510,15 @@ function sys.init(maid : Maid)
         ))
     end))
 
-    NetworkUtil.onServerInvoke(ON_WEAPON_SHOT, onGunShot)
+    maid:GiveTask(NetworkUtil.onServerEvent(ON_WEAPON_SHOT, onGunShot))
 
+    NetworkUtil.onServerInvoke(ON_WEAPON_SHOT_START, onGunShotStart)
+    NetworkUtil.onServerInvoke(ON_WEAPON_SHOT_END, onGunShotEnd)
+ 
     NetworkUtil.getRemoteEvent(ON_WEAPON_EQUIP)
     NetworkUtil.getRemoteEvent(ON_PLAYER_AIM_DIRECTION_UPDATE)
+    NetworkUtil.getRemoteEvent(ON_WEAPON_SHOT_EFFECT)
     NetworkUtil.getRemoteFunction(GET_CLIENT_WEAPON_STATE_INFO)
-    
 end
 
 return sys

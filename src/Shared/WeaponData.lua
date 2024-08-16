@@ -46,7 +46,8 @@ function util.getWeaponData(gunInstance : Instance) : WeaponData
         Name = gunInstance.Name,
         Id = id,
         RateOfFire = rateOfFire,
-        BulletSpeed = bulletSpeed
+        BulletSpeed = bulletSpeed,
+        AmmoRound = 10
     }
 end
 
