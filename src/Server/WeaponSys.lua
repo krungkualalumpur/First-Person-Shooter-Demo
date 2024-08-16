@@ -23,11 +23,16 @@ type ClientWeaponState = {
 }
 type Maid = Maid.Maid
 
+type PlayerState = {
+    IsAiming : boolean
+}
 type WeaponData = WeaponData.WeaponData
 --constants
 --remotes
 local ON_WEAPON_SHOT = "OnWeaponShot"
 local ON_WEAPON_EQUIP = "OnWeaponEquip"
+local ON_AIMING = "OnAiming"
+local ON_PLAYER_AIM_DIRECTION_UPDATE = "OnPlayerAimDirectionUpdate"
 
 local GET_CLIENT_WEAPON_STATE_INFO = "GetClientWeaponStateInfo"
 --variables
@@ -55,6 +60,68 @@ end
 --class
 local sys = {}
 
+function createPlayerState(
+    isAiming : boolean) : PlayerState
+    return {
+        IsAiming = isAiming
+    }
+end
+function getPlayerState(plr : Player) : PlayerState
+    return {
+        IsAiming = plr:GetAttribute("IsAiming") :: boolean,
+    }
+end
+function setPlayerState(
+    plr : Player, 
+    plrState: PlayerState) 
+    
+    plr:SetAttribute("IsAiming", plrState.IsAiming)
+end
+
+function onWeaponEquip(plr : Player, gun : Tool)
+    local char = plr.Character; assert(char)
+
+    local handle = gun:FindFirstChild("GunMesh") :: BasePart? ;assert(handle)
+     
+    local _toolMaid = Maid.new()
+
+    NetworkUtil.fireAllClients(ON_WEAPON_EQUIP, plr)
+    local leftLowerArm,leftUpperArm, leftHand, 
+    rightLowerArm, rightUpperArm, rightHand = char:FindFirstChild("LeftLowerArm") :: BasePart, 
+        char:FindFirstChild("LeftUpperArm") :: BasePart, 
+        char:FindFirstChild("LeftHand") :: BasePart, 
+        char:FindFirstChild("RightLowerArm") :: BasePart, 
+        char:FindFirstChild("RightUpperArm") :: BasePart,
+        char:FindFirstChild("RightHand") :: BasePart
+    assert(leftLowerArm and leftUpperArm and leftHand and  rightLowerArm and rightUpperArm and rightHand)
+    local leftShoulder, leftElbow, rightShoulder, rightElbow = leftUpperArm:FindFirstChild("LeftShoulder") :: Motor6D,
+        leftLowerArm:FindFirstChild("LeftElbow") :: Motor6D,
+        rightUpperArm:FindFirstChild("RightShoulder") :: Motor6D,
+        rightLowerArm:FindFirstChild("RightElbow") :: Motor6D
+    assert(leftShoulder, leftElbow, rightShoulder, rightElbow)
+
+    local function cleanup()
+        _toolMaid:Destroy()   
+    end
+    
+    local t = 1
+    _toolMaid:GiveTask(RunService.Stepped:Connect(function(_, dt : number)
+        if t > 1 then 
+            t = 0
+            local info  = NetworkUtil.invokeClient(GET_CLIENT_WEAPON_STATE_INFO, plr)
+            NetworkUtil.fireAllClients(ON_PLAYER_AIM_DIRECTION_UPDATE, plr, info.CFrame) 
+        end
+        t += dt 
+    end))
+    
+    
+    _toolMaid:GiveTask(gun.AncestryChanged:Connect(function()
+        if not gun:IsAncestorOf(char) then
+            cleanup()
+        end
+    end))
+end
+
 function onCharacterAdded(char : Model)
     local _maid = Maid.new()
     local plr = Players:GetPlayerFromCharacter(char)
@@ -69,11 +136,19 @@ function onCharacterAdded(char : Model)
         end)
       
         if weaponData then  
-            local handle = child:FindFirstChild("GunMesh") :: BasePart? ;assert(handle)
-     
-            local _toolMaid = Maid.new()
+            assert(child:IsA("Tool"))
+            
+            onWeaponEquip(plr, child)
+        end
+    end
 
-            NetworkUtil.fireAllClients(ON_WEAPON_EQUIP, plr)
+    local function onChildRemoved(child : Instance)
+        local weaponData 
+        pcall(function()
+            weaponData = WeaponData.getWeaponDataByName(child.Name) 
+        end)
+        if weaponData then
+            assert(child:IsA("Tool"))
             local leftLowerArm,leftUpperArm, leftHand, 
             rightLowerArm, rightUpperArm, rightHand = char:FindFirstChild("LeftLowerArm") :: BasePart, 
                 char:FindFirstChild("LeftUpperArm") :: BasePart, 
@@ -82,115 +157,15 @@ function onCharacterAdded(char : Model)
                 char:FindFirstChild("RightUpperArm") :: BasePart,
                 char:FindFirstChild("RightHand") :: BasePart
             assert(leftLowerArm and leftUpperArm and leftHand and  rightLowerArm and rightUpperArm and rightHand)
-            local leftShoulder, leftElbow, rightShoulder, rightElbow = leftUpperArm:FindFirstChild("LeftShoulder") :: Motor6D,
-                leftLowerArm:FindFirstChild("LeftElbow") :: Motor6D,
-                rightUpperArm:FindFirstChild("RightShoulder") :: Motor6D,
-                rightLowerArm:FindFirstChild("RightElbow") :: Motor6D
-            assert(leftShoulder, leftElbow, rightShoulder, rightElbow)
-
-            -- local a_l = leftLowerArm.Size.Y
-            -- local b_l = leftUpperArm.Size.Y
-            
-            -- local a_r = rightLowerArm.Size.Y
-            -- local b_r = rightUpperArm.Size.Y
-
-            -- local weld = _toolMaid:GiveTask(Instance.new("Weld")) :: Weld --Instance.new("Weld")
-            -- weld.Name = "WeaponWeld"
-            -- weld.Part0 = handle
-            -- weld.Part1 = rightHand
-            -- weld.C0 = CFrame.new()
-            -- weld.C1 = CFrame.new()
-            -- weld.Parent = rightHand
-
-            -- local function customInverseKinematicsCfAndAngles(a : number, b : number, startV3 : Vector3, targetV3 : Vector3): (CFrame, number, number, number)
-            --     local c = math.clamp((startV3 - targetV3).Magnitude, 0, (a + b))
-            --     --local handDestPos = if (startV3 - targetV3).Magnitude > a + b then startV3 + (targetV3 - startV3).Unit*c else targetV3
-            --     local A = math.acos((-(a^2) + b^2 + c^2)/(2*b*c))
-            --     local B = math.acos((a^2 - b^2 + c^2)/(2*a*c))
-            --     local C = math.acos((a^2 + b^2 - c^2)/(2*a*b))
-
-            --     local cf = 	CFrame.new(startV3, targetV3)  
-            --     cf = ((CFrame.new(startV3)*(char.PrimaryPart.CFrame - char.PrimaryPart.CFrame.Position)):ToObjectSpace(cf))*CFrame.Angles(math.pi/2,0,0)
-            --     cf -= cf.Position
-            --     return cf, A, B, C
-            -- end
-            local function resetJoints()
-                leftShoulder.C0, leftElbow.C0, rightShoulder.C0, rightElbow.C0 = CFrame.new(leftShoulder.C0.Position),  CFrame.new(leftElbow.C0.Position), CFrame.new(rightShoulder.C0.Position), CFrame.new(rightElbow.C0.Position)
-            end
-            local function cleanup()
-                _toolMaid:Destroy()   
-                resetJoints()
-            end
-            
-            -- local t = 2
-            -- _toolMaid:GiveTask(RunService.Stepped:Connect(function(_, dt : number)
-            --     if t > 1 then 
-            --         local info : ClientWeaponState = NetworkUtil.invokeClient(GET_CLIENT_WEAPON_STATE_INFO, plr)
-                    
-            --         t = 0
-
-            --         local leftTorsoToArmPos = leftUpperArm.CFrame*(Vector3.new(0,leftUpperArm.Size.Y*0.5,0)) 
-            --         local rightTorsoToArmPos = rightUpperArm.CFrame*(Vector3.new(0,rightUpperArm.Size.Y*0.5,0)) 
-                   
-            --         local deg = math.acos(((-(char.PrimaryPart.CFrame.LookVector*handle.Size.Z) + (rightTorsoToArmPos - char.PrimaryPart.Position) + Vector3.new(0, -1, 0)) ).Unit:Dot(-(char.PrimaryPart.CFrame.LookVector*handle.Size.Z).Unit))
-
-            --         local directionSourceCf = if info.IsAiming then info.CFrame*CFrame.new(0, -handle.Size.Y*0.75, 0)
-			-- 	            else (char.PrimaryPart.CFrame*CFrame.Angles(-deg, 0, 0))
-            --         -- local directionSourceCf =  
-                   
-            --         weld.C1 = ((rightHand.CFrame:Inverse()*(directionSourceCf*CFrame.new(0,0, if info.IsAiming then -handle.Size.Z else -handle.Size.Z*0.5))))
-
-            --         local c_l = math.clamp((leftTorsoToArmPos - handle.Position).Magnitude, 0, (a_l + b_l))
-            --         local c_r = math.clamp((rightTorsoToArmPos - handle.Position).Magnitude, 0, (a_r + b_r))
-
-            --         local handDestPos = handle.Position-- if (rightTorsoToArmPos - handle.Position).Magnitude > a_r + b_r then rightTorsoToArmPos + (handle.Position - rightTorsoToArmPos).Unit*c_r else handle.Position
-                    
-            --         local cfrot_l, A_l, B_l, C_l = customInverseKinematicsCfAndAngles(a_l, b_l, leftTorsoToArmPos, handDestPos)
-            --         local cfrot_r, A_r, B_r, C_r = customInverseKinematicsCfAndAngles(a_r, b_r, rightTorsoToArmPos, handDestPos)
-                    
-            --         leftShoulder.C0 = CFrame.new(leftShoulder.C0.Position)*cfrot_l*CFrame.Angles(-A_l, 0, 0)
-                    
-            --         leftElbow.C0 = CFrame.new(leftElbow.C0.Position)*CFrame.Angles(-C_l + math.rad(180), 0, 0)
-            --         rightShoulder.C0 = CFrame.new(rightShoulder.C0.Position)*cfrot_r*CFrame.Angles(-A_r, 0, 0)
-                    
-            --         rightElbow.C0 =  CFrame.new(rightElbow.C0.Position)*CFrame.Angles(-C_r + math.rad(180) ,0, 0)         
-            --     end
-            --     t += dt 
-            -- end))
-          
-           
-            _toolMaid:GiveTask(child.AncestryChanged:Connect(function()
-                if not child:IsAncestorOf(char) then
-                    print('krinappu')
-                    cleanup()
-                end
-            end))
-        end
-    end
-
-    local function onChildRemoved(child : Instance)
-        -- local weaponData 
-        -- pcall(function()
-        --     weaponData = WeaponData.getWeaponDataByName(child.Name) 
-        -- end)
-        -- if weaponData then
-        --     assert(child:IsA("Tool"))
-        --     local leftLowerArm,leftUpperArm, leftHand, 
-        --     rightLowerArm, rightUpperArm, rightHand = char:FindFirstChild("LeftLowerArm") :: BasePart, 
-        --         char:FindFirstChild("LeftUpperArm") :: BasePart, 
-        --         char:FindFirstChild("LeftHand") :: BasePart, 
-        --         char:FindFirstChild("RightLowerArm") :: BasePart, 
-        --         char:FindFirstChild("RightUpperArm") :: BasePart,
-        --         char:FindFirstChild("RightHand") :: BasePart
-        --     assert(leftLowerArm and leftUpperArm and leftHand and  rightLowerArm and rightUpperArm and rightHand)
         
-        --     for _,v in pairs(rightHand:GetChildren()) do
-        --         if v:IsA("Weld") and v.Part0 and v.Part0:IsDescendantOf(child) then
-        --             v:Destroy()
-        --         end
-        --     end
-        --     child:PivotTo(CFrame.new())
-        -- end
+            NetworkUtil.fireAllClients(ON_PLAYER_AIM_DIRECTION_UPDATE, plr, char:GetBoundingBox())
+            -- for _,v in pairs(rightHand:GetChildren()) do
+            --     if v:IsA("Weld") and v.Part0 and v.Part0:IsDescendantOf(child) then
+            --         v:Destroy()
+            --     end
+            -- end
+            -- child:PivotTo(CFrame.new())
+        end
     end
 
     _maid:GiveTask(char.ChildAdded:Connect(onChildAdded))
@@ -205,6 +180,10 @@ end
 function onPlayerAdded(plr : Player)
     local _maid = Maid.new()
     
+    setPlayerState(plr, createPlayerState(
+        false
+    ))
+
     onCharacterAdded(plr.Character or plr.CharacterAdded:Wait())
     _maid:GiveTask(plr.CharacterAdded:Connect(onCharacterAdded))
 
@@ -438,6 +417,9 @@ function onGunShot(
     )
     local char = plr.Character
     assert(char and char.PrimaryPart)
+    local head = char:FindFirstChild("Head")
+    assert(head)
+    
     local startCf = clampBulletStartCFrame(char.PrimaryPart.CFrame, shotPosCf)
     local gun = getWeaponFromPlayer(plr)
     assert(gun)
@@ -449,7 +431,7 @@ function onGunShot(
     
   	local bullet =  spawnBullet(startCf)
 	--  bullet:SetNetworkOwner(plr)
-	
+	NetworkUtil.fireAllClients(ON_PLAYER_AIM_DIRECTION_UPDATE, plr, shotPosCf)
     playSound(1905367471, handle, 2)
 end
 function sys.init(maid : Maid)
@@ -468,8 +450,16 @@ function sys.init(maid : Maid)
     maid:GiveTask(Players.PlayerAdded:Connect(onPlayerAdded))
     --networks
     maid:GiveTask(NetworkUtil.onServerEvent(ON_WEAPON_SHOT, onGunShot))
+    maid:GiveTask(NetworkUtil.onServerEvent(ON_AIMING, function(plr : Player, aiming : boolean)  
+        local playerState = getPlayerState(plr)
+        
+        setPlayerState(plr, createPlayerState(
+            aiming
+        ))
+    end))
 
     NetworkUtil.getRemoteEvent(ON_WEAPON_EQUIP)
+    NetworkUtil.getRemoteEvent(ON_PLAYER_AIM_DIRECTION_UPDATE)
     NetworkUtil.getRemoteFunction(GET_CLIENT_WEAPON_STATE_INFO)
     
 end
