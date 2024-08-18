@@ -14,7 +14,7 @@ local MathUtil = require(_Packages:WaitForChild("MathUtil"))
 local InputHandler = require(_Packages:WaitForChild("InputHandler"))
 local NetworkUtil = require(_Packages:WaitForChild("NetworkUtil"))
 --modules
-local WeaponData = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("WeaponData"))
+local WeaponUtil = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("WeaponUtil"))
 --types
 type Maid = Maid.Maid
 
@@ -85,7 +85,7 @@ function getWeaponFromPlayer(plr : Player) : Tool?
     local char = plr.Character
     assert(char)
     for _,v in pairs(char:GetChildren()) do 
-        local weaponData = WeaponData.getWeaponDataByName(v.Name)
+        local weaponData = WeaponUtil.getWeaponDataByName(v.Name)
         if weaponData then 
             return v :: Tool
         end
@@ -351,7 +351,7 @@ function onPlayerAdded(plr : Player)
     end))
 end
 
-function shootEffect(weaponData : WeaponData.WeaponData)
+function shootEffect(weaponData : WeaponUtil.WeaponData)
     local conn
     local i = 0
 
@@ -393,7 +393,7 @@ function sys.init(maid : Maid)
         assert(weapon)
         local handle = weapon:FindFirstChild("GunMesh") :: BasePart?; assert(handle)
 
-        local weaponData = WeaponData.getWeaponDataByName(weapon.Name)
+        local weaponData = WeaponUtil.getWeaponDataByName(weapon.Name)
         assert(weaponData)
         
         -- NetworkUtil.invokeServer(ON_WEAPON_SHOT_START, handle.CFrame*CFrame.new(0,0,-handle.Size.Z*0.5))

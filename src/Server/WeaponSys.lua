@@ -15,7 +15,7 @@ local MathUtil = require(_Packages:WaitForChild("MathUtil"))
 local NetworkUtil = require(_Packages:WaitForChild("NetworkUtil"))
 local InputHandler = require(_Packages:WaitForChild("InputHandler"))
 --modules
-local WeaponData = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("WeaponData"))
+local WeaponUtil = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("WeaponUtil"))
 --types
 type ClientWeaponState = {
     CFrame : CFrame,
@@ -26,7 +26,7 @@ type Maid = Maid.Maid
 type PlayerState = {
     IsAiming : boolean
 }
-type WeaponData = WeaponData.WeaponData
+type WeaponUtil = WeaponUtil.WeaponData
 --constants
 --remotes
 local ON_WEAPON_SHOT = "OnWeaponShot"
@@ -138,7 +138,7 @@ function onCharacterAdded(char : Model)
         assert(char.PrimaryPart)
         local weaponData 
         pcall(function()
-            weaponData = WeaponData.getWeaponDataByName(child.Name) 
+            weaponData = WeaponUtil.getWeaponDataByName(child.Name) 
         end)
       
         if weaponData then  
@@ -151,7 +151,7 @@ function onCharacterAdded(char : Model)
     local function onChildRemoved(child : Instance)
         local weaponData 
         pcall(function()
-            weaponData = WeaponData.getWeaponDataByName(child.Name) 
+            weaponData = WeaponUtil.getWeaponDataByName(child.Name) 
         end)
         if weaponData then
             assert(child:IsA("Tool"))
@@ -410,7 +410,7 @@ function getWeaponFromPlayer(plr : Player) : Tool?
     local char = plr.Character
     assert(char)
     for _,v in pairs(char:GetChildren()) do 
-        local weaponData = WeaponData.getWeaponDataByName(v.Name)
+        local weaponData = WeaponUtil.getWeaponDataByName(v.Name)
         if weaponData then 
             return v :: Tool
         end
@@ -423,7 +423,7 @@ function onGunShot(
     startCf :CFrame)    
     local gun = getWeaponFromPlayer(plr)
     assert(gun)
-    local weaponData = WeaponData.getWeaponDataByName(gun.Name); assert(weaponData)
+    local weaponData = WeaponUtil.getWeaponDataByName(gun.Name); assert(weaponData)
     local handle = gun:WaitForChild("GunMesh") :: BasePart
     local char = plr.Character
     assert(char and char.PrimaryPart)
@@ -440,10 +440,14 @@ function onGunShot(
         playSound(1905367471, handle, 2)
     end
 
-    -- print("fuyoh", (DateTime.now().UnixTimestampMillis/1000) - lastShotTime, " > ", weaponData.RateOfFire*0.95)
-    if (DateTime.now().UnixTimestampMillis/1000) - lastShotTime > weaponData.RateOfFire*0.99 then 
+    local weaponState = WeaponUtil.getWeaponState(gun)
+
+    if (DateTime.now().UnixTimestampMillis/1000) - lastShotTime > weaponData.RateOfFire*0.99 and weaponState.AmmoRound > 0 then 
         gun:SetAttribute(shotTimeStampKey, (DateTime.now().UnixTimestampMillis/1000))
         shoot()
+        
+        weaponState.AmmoRound -= 1
+        WeaponUtil.setWeaponState(gun, weaponState)
     end
 end
 
@@ -458,7 +462,7 @@ function onGunShotStart(
     
     local gun = getWeaponFromPlayer(plr)
     assert(gun)
-    local weaponData = WeaponData.getWeaponDataByName(gun.Name)
+    local weaponData = WeaponUtil.getWeaponDataByName(gun.Name)
     assert(weaponData)
     local handle = gun:WaitForChild("GunMesh") :: BasePart
     local shotTimeStampKey = "ShotTimestamp" 
@@ -488,16 +492,17 @@ function onGunShotEnd(plr : Player)
 end
 
 function sys.init(maid : Maid)
+    local defaultAmmoCapacity = 10
+
     for _,v in pairs(CollectionService:GetTagged("Gun")) do
-        local weaponData = WeaponData.getWeaponDataByName(v.Name)
+        local weaponData = WeaponUtil.getWeaponDataByName(v.Name)
         assert(weaponData)
-        WeaponData.setWeaponData(
+        WeaponUtil.setWeaponData(
             v, 
-            v.Name, 
-            weaponData.Id,
-            weaponData.RateOfFire,
-            weaponData.BulletSpeed
+            weaponData
         )
+        local newWeaponState = WeaponUtil.createWeaponState(defaultAmmoCapacity,  weaponData.AmmoRound)
+        WeaponUtil.setWeaponState(v, newWeaponState)
     end
     
     maid:GiveTask(Players.PlayerAdded:Connect(onPlayerAdded))
