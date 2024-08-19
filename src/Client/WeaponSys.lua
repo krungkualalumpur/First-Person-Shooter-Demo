@@ -167,10 +167,7 @@ function sys.onWeaponEquipped(gun : Tool)
 			*CFrame.Angles(math.pi, 0, 0) --weld.Part1.CFrame:Inverse()*(weld.Part0.CFrame*weld.C0)
 		weld.Parent = rightHand
 		
-        if camera then 
-            Player.CameraMode = Enum.CameraMode.LockFirstPerson
-            humanoid.CameraOffset = Vector3.new(0, 0, -1) 
-        end
+       
 		for i, v in pairs(char:GetChildren()) do
 			if v:IsA("BasePart") and v.Name ~= "Head" then
 
@@ -256,6 +253,13 @@ function sys.onWeaponEquipped(gun : Tool)
             WeaponEquipUI(_maid, dark, weaponData, weaponState, playerState).Parent = UITarget
         end
         
+        local function checkWeaponOwner()
+            local plrEquipping = if gun.Parent then Players:GetPlayerFromCharacter(gun.Parent) else nil 
+            if not plrEquipping then
+                cleanup()
+            end
+        end
+
         local aimFrame 
         if camera then 
             aimFrame = createAim()
@@ -274,6 +278,9 @@ function sys.onWeaponEquipped(gun : Tool)
 			if WeaponUtil.getPlayerState(plr).IsReloading then resetJoints(); return end;
 
             if camera then 
+                Player.CameraMode = Enum.CameraMode.LockFirstPerson
+                humanoid.CameraOffset = Vector3.new(0, 0, -1) 
+                
                 humanoid.CameraOffset = humanoidRootPart.CFrame:VectorToObjectSpace(camera.CFrame.UpVector*head.Size.Y*0.75 + camera.CFrame.LookVector*head.Size.Z*0.5 + getCamOffset()) --Vector3.new(0,char.Head.Size.Y*0.25,-char.Head.Size.Z)
 			    camera.CFrame *= CFrame.Angles(getCamRotOffset().X, getCamRotOffset().Y, getCamOffset().Z)
             end
@@ -346,14 +353,12 @@ function sys.onWeaponEquipped(gun : Tool)
             -- task.delay(0.1, function()
             --     p:Destroy()
             -- end)
+            checkWeaponOwner()
 		end))
 		
-		_maid:GiveTask(gun.AncestryChanged:Connect(function()
-            local plrEquipping = if gun.Parent then Players:GetPlayerFromCharacter(gun.Parent) else nil 
-            if not plrEquipping then
-                cleanup()
-            end
-		end))
+		-- _maid:GiveTask(gun.AncestryChanged:Connect(function()
+        --     checkWeaponOwner()
+		-- end))
         
         getWeaponUI()
 	end

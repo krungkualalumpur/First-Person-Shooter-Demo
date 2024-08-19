@@ -471,10 +471,49 @@ function onGunShot(
     local shotTimeStampKey = "ShotTimestamp" 
     local lastShotTime = gun:GetAttribute(shotTimeStampKey) :: number? or (0)
 
+    local function flashFx(adornee : Instance)
+        local lifeTime = 0.09
+
+        -- local inst = Instance.new("Part")
+        -- inst.Transparency = 1
+        -- inst.CanCollide, inst.Anchored = true, true
+        -- inst.CFrame, inst.Size = startCf, Vector3.new(0,0,0)
+        -- inst.Parent = workspace
+
+        local bg = Instance.new("BillboardGui")
+        bg.LightInfluence = 0
+        bg.Brightness = 4
+        bg.ExtentsOffsetWorldSpace = Vector3.new(0,0.5,-1)
+        bg.Size = UDim2.fromScale(2.5, 2.5)
+        bg.Parent = adornee
+
+        local imageLabel = Instance.new("ImageLabel")
+        imageLabel.Rotation = math.random(-180, 180)
+        imageLabel.Size = UDim2.fromScale(1, 1)
+        imageLabel.BackgroundTransparency = 1
+        imageLabel.Image = "rbxassetid://233113663"
+        imageLabel.Parent = bg
+        local tween = TweenService:Create(imageLabel, TweenInfo.new(lifeTime), {
+            ImageTransparency = 1
+        })
+        tween:Play()
+        tween:Destroy()
+
+        local light = Instance.new("SpotLight")
+        light.Parent = adornee
+
+        task.delay(lifeTime, function()
+            bg:Destroy()
+            light:Destroy()
+        end)
+    end
     local function shoot()
         startCf = clampBulletStartCFrame(char.PrimaryPart.CFrame, startCf)
         --NetworkUtil.fireAllClients(ON_PLAYER_AIM_DIRECTION_UPDATE, plr, shotPosCf)
-        task.spawn(function() spawnBullet(weaponData, startCf) end)
+        task.spawn(function()
+            spawnBullet(weaponData, startCf) 
+        end)
+        flashFx(gun:WaitForChild("GunMesh"))
 
         NetworkUtil.fireClient(ON_WEAPON_SHOT_EFFECT, plr, weaponData)
         playSound(1905367471, handle, 2)
