@@ -326,7 +326,7 @@ function onInstanceHit(hit : BasePart, cf : CFrame)
     createFx()
 end
 
-function otherHumanoidHit(char : Model, hitPart : BasePart, hitCf : CFrame)
+function otherHumanoidHit(char : Model, hitPart : BasePart, hitCf : CFrame, healthDamage : number)
     local function createFx()
         local p = Instance.new("Part")
         p.Anchored = true
@@ -356,7 +356,7 @@ function otherHumanoidHit(char : Model, hitPart : BasePart, hitCf : CFrame)
 
     local plr = Players:GetPlayerFromCharacter(char)
     local humanoid = char:FindFirstChild("Humanoid") :: Humanoid?
-    local damage = if hitPart.Name == "Head" then 60 else 15
+    local damage = if hitPart.Name == "Head" then healthDamage*3 else healthDamage
 
     assert(humanoid)
     humanoid.Health -= damage
@@ -364,7 +364,7 @@ function otherHumanoidHit(char : Model, hitPart : BasePart, hitCf : CFrame)
     createFx()
 end
     
-function spawnBullet(startCf : CFrame)
+function spawnBullet(weaponData : WeaponUtil.WeaponData, startCf : CFrame)
     local _maid = Maid.new()
     local range = 1000
     local pcf  = startCf
@@ -384,7 +384,7 @@ function spawnBullet(startCf : CFrame)
      raycastParams.FilterDescendantsInstances = {p, getEffectsFolder()}
      --bullet init
      _maid:GiveTask(RunService.Stepped:Connect(function(t, dt : number)
-        local velocity = p.CFrame.LookVector*2856.8*dt
+        local velocity = p.CFrame.LookVector*weaponData.BulletSpeed*dt
 
          local ray = if pcf then workspace:Raycast(pcf.Position, velocity, raycastParams) else nil
          
@@ -398,7 +398,7 @@ function spawnBullet(startCf : CFrame)
             else nil
 			
             if char then
-				otherHumanoidHit(char :: Model, hit, CFrame.new(ray.Position, ray.Position + ray.Normal))
+				otherHumanoidHit(char :: Model, hit, CFrame.new(ray.Position, ray.Position + ray.Normal), weaponData.HealthDamage)
             else
                 onInstanceHit(hit, CFrame.new(ray.Position, ray.Position + pcf.LookVector))
 			end
@@ -436,7 +436,7 @@ function spawnBullet(startCf : CFrame)
 		if hit.CanCollide and hit.Transparency < 1 then 
 			local char = if hit.Parent and hit.Parent:FindFirstChild("Humanoid") then hit.Parent else nil
 			if char then
-				otherHumanoidHit(char :: Model, hit, pcf)
+				otherHumanoidHit(char :: Model, hit, pcf, weaponData.HealthDamage)
             else
                 onInstanceHit(hit, pcf)
 			end
@@ -474,7 +474,7 @@ function onGunShot(
     local function shoot()
         startCf = clampBulletStartCFrame(char.PrimaryPart.CFrame, startCf)
         --NetworkUtil.fireAllClients(ON_PLAYER_AIM_DIRECTION_UPDATE, plr, shotPosCf)
-        task.spawn(function() spawnBullet(startCf) end)
+        task.spawn(function() spawnBullet(weaponData, startCf) end)
 
         NetworkUtil.fireClient(ON_WEAPON_SHOT_EFFECT, plr, weaponData)
         playSound(1905367471, handle, 2)

@@ -9,7 +9,8 @@ export type WeaponData = {
     Id : number,
     BulletSpeed : number,
     RateOfFire : number,
-    AmmoRound : number
+    AmmoRound : number,
+    HealthDamage : number
 }
 export type WeaponState = {
     AmmoRound : number
@@ -28,17 +29,19 @@ export type PlayerState = {
 local data : {[string] : WeaponData} = {}
 data.Gun = {
     Name = "Gun",
-    BulletSpeed = 100,
+    BulletSpeed = 2856.8,
     Id = 1,
     RateOfFire = 0.5,
-    AmmoRound = 10
+    AmmoRound = 10,
+    HealthDamage = 6 
 } 
 data.Uzi = {
     Name = "Uzi",
-    BulletSpeed = 80,
+    BulletSpeed = 2856.8,
     Id = 2,
     RateOfFire = 0.1,
-    AmmoRound = 20
+    AmmoRound = 20,
+    HealthDamage = 3
 }
 
 local util = {}
@@ -56,16 +59,20 @@ function util.getWeaponData(gunInstance : Instance) : WeaponData
     local rateOfFire = gunInstance:GetAttribute("RateOfFire") :: number?
     local bulletSpeed = gunInstance:GetAttribute("BulletSpeed") :: number?
     local ammoRound = gunInstance:GetAttribute("AmmoRound") :: number?
+    local healthDamage = gunInstance:GetAttribute("HealthDamage") :: number?
     assert(id)
     assert(rateOfFire)
     assert(bulletSpeed)
+    assert(ammoRound)
+    assert(healthDamage)
 
     return {
         Name = gunInstance.Name,
         Id = id,
         RateOfFire = rateOfFire,
         BulletSpeed = bulletSpeed,
-        AmmoRound = 10
+        AmmoRound = ammoRound,
+        HealthDamage = healthDamage
     }
 end
 
@@ -81,6 +88,7 @@ function util.setWeaponData(
     gunInstance:SetAttribute("RateOfFire", weaponData.RateOfFire)
     gunInstance:SetAttribute("BulletSpeed", weaponData.BulletSpeed)
     gunInstance:SetAttribute("AmmoRound", weaponData.AmmoRound)
+    gunInstance:SetAttribute("HealthDamage", weaponData.HealthDamage)
 end
 
 function util.createWeaponState(

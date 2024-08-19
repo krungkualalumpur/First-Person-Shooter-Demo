@@ -282,7 +282,7 @@ function sys.onWeaponEquipped(gun : Tool)
 			local rightTorsoToArmPos = rightUpperArm.CFrame*(Vector3.new(0,rightUpperArm.Size.Y*0.5,0)) 
 			
 			local deg = math.acos(((-(char.PrimaryPart.CFrame.LookVector*handle.Size.Z) + (rightTorsoToArmPos - char.PrimaryPart.Position) + Vector3.new(0, -1, 0)) ).Unit:Dot(-(char.PrimaryPart.CFrame.LookVector*handle.Size.Z).Unit))
-			local directionSourceCf =  if getIsAiming() then ((if camera then camera.CFrame else head.CFrame)*CFrame.new(0, -handle.Size.Y, 0))
+			local directionSourceCf =  if getIsAiming() then ((if camera then camera.CFrame else head.CFrame)*CFrame.new(0, -handle.Size.Y*0.65, 0))
 				else (char.PrimaryPart.CFrame*CFrame.Angles(-deg, 0, 0))
 			
 			--local destPos : Vector3 = directionSourceCf*Vector3.new(0, if getIsAiming() then -handle.Size.Y*0.5 else 0, -handle.Size.Z)
