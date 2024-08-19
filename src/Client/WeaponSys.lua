@@ -5,6 +5,7 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
+local Lighting = game:GetService("Lighting")
 --packages
 local _Packages = ReplicatedStorage:WaitForChild("Packages")
 
@@ -402,6 +403,13 @@ function shootEffect(weaponData : WeaponUtil.WeaponData)
     local rotOffsetAmp = math.random(10, 40)/1000
 
     camera.CFrame = camera.CFrame*CFrame.Angles(math.rad(math.random(2,5)), 0, 0)
+
+    local blur = Lighting:WaitForChild("Blur") :: BlurEffect
+    blur.Size = 3
+    
+    local ts =  TweenService:Create(blur, TweenInfo.new(0.5), {Size = 0})
+    ts:Play()
+    ts:Destroy()
 
     conn = RunService.Stepped:Connect(function()
         i += 0.3
