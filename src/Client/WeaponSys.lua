@@ -15,6 +15,10 @@ local InputHandler = require(_Packages:WaitForChild("InputHandler"))
 local NetworkUtil = require(_Packages:WaitForChild("NetworkUtil"))
 --modules
 local WeaponUtil = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("WeaponUtil"))
+local CustomEnums = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Enums"))
+local AnimationManager = require(ReplicatedStorage:WaitForChild("Client"):WaitForChild("AnimationManager"))
+
+local WeaponEquipUI = require(ReplicatedStorage:WaitForChild("Client"):WaitForChild("Interface"):WaitForChild("WeaponEquipUI"))
 --types
 type Maid = Maid.Maid
 
@@ -23,9 +27,7 @@ type State<T> = ColdFusion.State<T>
 type ValueState<T> = ColdFusion.ValueState<T>
 type CanBeState<T> = ColdFusion.CanBeState<T>
 
-type PlayerState = {
-    IsAiming : boolean
-}
+type PlayerState = WeaponUtil.PlayerState
 --constants
 local WALK_SPEED = 15
 local JUMP_POWER = 50
@@ -36,6 +38,9 @@ local ON_WEAPON_SHOT_END = "OnWeaponShotEnd"
 local ON_WEAPON_EQUIP = "OnWeaponEquip"
 local ON_WEAPON_SHOT_EFFECT = "OnWeaponShotEffect"
 
+local ON_WEAPON_RELOAD = "OnWeaponReload"
+local ON_WEAPON_RELOAD_CLIENT= "OnWeaponReloadClient"
+
 local ON_AIMING = "OnAiming"
 local ON_PLAYER_AIM_DIRECTION_UPDATE = "OnPlayerAimDirectionUpdate"
 
@@ -45,6 +50,7 @@ local camFOV = 70
 --references
 local Player = Players.LocalPlayer
 local UITarget = Player:WaitForChild("PlayerGui"):WaitForChild("ScreenGui")
+local DarkState
 --local functions
 local function freezePlayer()
     local character = Player.Character or Player.CharacterAdded:Wait()
@@ -55,6 +61,21 @@ local function thawPlayer()
     local character = Player.Character or Player.CharacterAdded:Wait()
     character.Humanoid.WalkSpeed = WALK_SPEED
     character.Humanoid.JumpPower = JUMP_POWER
+end
+
+local function getDarkState()
+    if not DarkState then
+        local _fuse = ColdFusion.fuse()
+        local _new = _fuse.new
+        local _import = _fuse.import
+        local _bind = _fuse.bind
+        local _clone = _fuse.clone
+        local _Computed = _fuse.Computed
+        local _Value = _fuse.Value
+
+        DarkState = _Value(false)
+    end
+    return DarkState 
 end
 --class
 local sys = {}
@@ -75,11 +96,6 @@ end
 function getCamRotOffset()
     return _camRotOffset
 end
-function getPlayerState(plr : Player) : PlayerState
-    return {
-        IsAiming = plr:GetAttribute("IsAiming") :: boolean,
-    }
-end
 
 function getWeaponFromPlayer(plr : Player) : Tool?
     local char = plr.Character
@@ -94,8 +110,9 @@ function getWeaponFromPlayer(plr : Player) : Tool?
 end
 
 function sys.onWeaponEquipped(gun : Tool)
-    if gun:IsA("Tool") then
-        local _maid = Maid.new()
+    local weaponData = WeaponUtil.getWeaponDataByName(gun.Name)
+    if weaponData then
+        local _maid = Maid.new() 
 
         local _fuse = ColdFusion.fuse(_maid)
         local _new = _fuse.new
@@ -105,12 +122,16 @@ function sys.onWeaponEquipped(gun : Tool)
         local _Computed = _fuse.Computed
         local _Value = _fuse.Value
 
-        
+        local dark = getDarkState()
+    
         local char = if gun.Parent and Players:GetPlayerFromCharacter(gun.Parent) then gun.Parent :: Model else nil; assert(char and char.PrimaryPart)
+        local plr = Players:GetPlayerFromCharacter(char); assert(plr)
+
         local humanoid = char:FindFirstChild("Humanoid") :: Humanoid;  assert(humanoid)
         local handle = gun:FindFirstChild("GunMesh") :: BasePart? ;assert(handle)
        
         local camera = if char == Player.Character then workspace.CurrentCamera else nil
+        
 
         local leftLowerArm,leftUpperArm, leftHand, 
         rightLowerArm, rightUpperArm, rightHand = char:FindFirstChild("LeftLowerArm") :: BasePart, 
@@ -164,6 +185,9 @@ function sys.onWeaponEquipped(gun : Tool)
 		local animateScript = char:WaitForChild("Animate")
         local runAnim = animateScript:WaitForChild("run"):FindFirstChildWhichIsA("Animation") :: Animation
         local walkAnim = animateScript:WaitForChild("walk"):FindFirstChildWhichIsA("Animation") :: Animation
+
+        local weaponState = _Value(WeaponUtil.getWeaponState(gun))
+        local playerState = _Value(WeaponUtil.getPlayerState(Player))
 
 		local function customInverseKinematicsCfAndAngles(a : number, b : number, startV3 : Vector3, targetV3 : Vector3): (CFrame, number, number, number)
             local c = math.clamp((startV3 - targetV3).Magnitude, 0, (a + b))
@@ -219,8 +243,17 @@ function sys.onWeaponEquipped(gun : Tool)
         local function getIsAiming()
             local plr = Players:GetPlayerFromCharacter(char)
             assert(plr)
-            local isAiming =  getPlayerState(plr).IsAiming
+            local isAiming =  WeaponUtil.getPlayerState(plr).IsAiming
             return isAiming
+        end
+        local function getWeaponUI()
+            _maid:GiveTask(gun:GetAttributeChangedSignal("AmmoRound"):Connect(function()
+                weaponState:Set(WeaponUtil.getWeaponState(gun))
+            end))
+            _maid:GiveTask(Player:GetAttributeChangedSignal("AmmoCapacity"):Connect(function()
+                playerState:Set(WeaponUtil.getPlayerState(Player))
+            end))
+            WeaponEquipUI(_maid, dark, weaponData, weaponState, playerState).Parent = UITarget
         end
         
         local aimFrame 
@@ -238,7 +271,9 @@ function sys.onWeaponEquipped(gun : Tool)
             resetJoints()
         end
 		_maid:GiveTask(RunService.Stepped:Connect(function()
-			if camera then 
+			if WeaponUtil.getPlayerState(plr).IsReloading then resetJoints(); return end;
+
+            if camera then 
                 humanoid.CameraOffset = humanoidRootPart.CFrame:VectorToObjectSpace(camera.CFrame.UpVector*head.Size.Y*0.75 + camera.CFrame.LookVector*head.Size.Z*0.5 + getCamOffset()) --Vector3.new(0,char.Head.Size.Y*0.25,-char.Head.Size.Z)
 			    camera.CFrame *= CFrame.Angles(getCamRotOffset().X, getCamRotOffset().Y, getCamOffset().Z)
             end
@@ -320,6 +355,7 @@ function sys.onWeaponEquipped(gun : Tool)
             end
 		end))
         
+        getWeaponUI()
 	end
 end
 
@@ -383,30 +419,43 @@ function shoot(weapon : Tool)
 end
 
 function sys.init(maid : Maid)
+    local _fuse = ColdFusion.fuse()
+    local _new = _fuse.new
+    local _import = _fuse.import
+    local _bind = _fuse.bind
+    local _clone = _fuse.clone
+    local _Computed = _fuse.Computed
+    local _Value = _fuse.Value
+
     local _maid = maid:GiveTask(Maid.new())
     local inputHandler = maid:GiveTask(InputHandler.new())
 
-    local function onGunActivatedEvent()
-        local char = Player.Character
-        assert(char)
-        local weapon = getWeaponFromPlayer(Player)
-        assert(weapon)
-        local handle = weapon:FindFirstChild("GunMesh") :: BasePart?; assert(handle)
+    local isDark = _Value(false)
 
-        local weaponData = WeaponUtil.getWeaponDataByName(weapon.Name)
-        assert(weaponData)
-        
-        -- NetworkUtil.invokeServer(ON_WEAPON_SHOT_START, handle.CFrame*CFrame.new(0,0,-handle.Size.Z*0.5))
-        do
-            local t = tick() - weaponData.RateOfFire
-            _maid.Shoot = RunService.RenderStepped:Connect(function()
-                --print(tick() - t, ">", weaponData.RateOfFire)
-                if tick() - t  > weaponData.RateOfFire then 
-                    print("puei")
-                    t = tick()
-                    shoot(weapon)
-                end
-            end)
+
+    local function onGunActivatedEvent()
+        if getWeaponFromPlayer(Player) then 
+            local char = Player.Character
+            assert(char)
+            local weapon = getWeaponFromPlayer(Player)
+            assert(weapon)
+            local handle = weapon:FindFirstChild("GunMesh") :: BasePart?; assert(handle)
+
+            local weaponData = WeaponUtil.getWeaponDataByName(weapon.Name)
+            assert(weaponData)
+            
+            -- NetworkUtil.invokeServer(ON_WEAPON_SHOT_START, handle.CFrame*CFrame.new(0,0,-handle.Size.Z*0.5))
+            do
+                local t = tick() - weaponData.RateOfFire
+                _maid.Shoot = RunService.RenderStepped:Connect(function()
+                    --print(tick() - t, ">", weaponData.RateOfFire)
+                    if tick() - t  > weaponData.RateOfFire then 
+                        t = tick()
+                        shoot(weapon)
+                        print(WeaponUtil.getWeaponState(weapon).AmmoRound, "/", WeaponUtil.getPlayerState(Player).AmmoCapacity)
+                    end
+                end)
+            end
         end
     end
 
@@ -416,7 +465,9 @@ function sys.init(maid : Maid)
     end
 
     local function onAim(isAiming : boolean)
-        NetworkUtil.fireServer(ON_AIMING, isAiming)
+        if getWeaponFromPlayer(Player) then 
+            NetworkUtil.fireServer(ON_AIMING, isAiming)
+        end
     end
 
     local function updateHeadDirection(plr : Player, directionCf: CFrame)
@@ -452,6 +503,11 @@ function sys.init(maid : Maid)
         end
     end)
 
+    inputHandler:Map("OnGunReloadPC", "Keyboard", {Enum.KeyCode.R}, "Hold", function()
+        NetworkUtil.fireServer(ON_WEAPON_RELOAD)
+    end, function() 
+    end)
+
     maid:GiveTask(NetworkUtil.onClientEvent(ON_PLAYER_AIM_DIRECTION_UPDATE, function(otherPlr : Player, dirCf : CFrame) 
         if otherPlr ~= Player then
             updateHeadDirection(otherPlr, dirCf)
@@ -465,8 +521,15 @@ function sys.init(maid : Maid)
         assert(camera)
         return {
             CFrame = camera.CFrame,
-            IsAiming = getPlayerState(Player).IsAiming
+            IsAiming = WeaponUtil.getPlayerState(Player).IsAiming
         }
+    end)
+
+    NetworkUtil.onClientInvoke(ON_WEAPON_RELOAD_CLIENT, function(plr : Player)
+        local reloadAnim=  AnimationManager.playAnim(CustomEnums.AnimationAction.Reload)
+        task.wait(reloadAnim.Length + 0.1)
+        --reloadAnim.Ended:Wait()
+        return nil
     end)
 
     -- maid:GiveTask(NetworkUtil.onClientEvent(ON_WEAPON_EQUIP, function(plrEquipping : Player) 

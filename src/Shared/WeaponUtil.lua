@@ -12,8 +12,12 @@ export type WeaponData = {
     AmmoRound : number
 }
 export type WeaponState = {
-    AmmoCapacity : number,
     AmmoRound : number
+}
+export type PlayerState = {
+    IsReloading : boolean,
+    IsAiming : boolean,
+    AmmoCapacity : number
 }
 --constants
 --remotes
@@ -29,6 +33,13 @@ data.Gun = {
     RateOfFire = 0.5,
     AmmoRound = 10
 } 
+data.Uzi = {
+    Name = "Uzi",
+    BulletSpeed = 80,
+    Id = 2,
+    RateOfFire = 0.1,
+    AmmoRound = 20
+}
 
 local util = {}
 function util.getWeaponDataByName(weaponName : string): WeaponData?
@@ -73,28 +84,55 @@ function util.setWeaponData(
 end
 
 function util.createWeaponState(
-    ammoCapacity : number,
     ammoRound : number) : WeaponState
     return {
-        AmmoCapacity = ammoCapacity,
         AmmoRound = ammoRound
     }
 end
 
 function util.getWeaponState(gunInstance : Instance) : WeaponState
-    local ammoCapacity = gunInstance:GetAttribute("AmmoCapacity") :: number
-    assert(ammoCapacity)
     local ammoRound = gunInstance:GetAttribute("AmmoRound") :: number
     assert(ammoRound)
     return {
-        AmmoCapacity = ammoCapacity,
         AmmoRound = ammoRound
     }
 end
 
 function util.setWeaponState(gunInstance : Instance, weaponState : WeaponState) 
-  gunInstance:SetAttribute("AmmoCapacity", weaponState.AmmoCapacity)
   gunInstance:SetAttribute("AmmoRound", weaponState.AmmoRound)    
+end
+
+function util.createPlayerState(
+    isAiming : boolean,
+    isReloading : boolean,
+    ammoCapacity : number) : PlayerState
+    return {
+        IsAiming = isAiming,
+        IsReloading = isReloading,
+        AmmoCapacity = ammoCapacity
+    }
+end
+function util.getPlayerState(plr : Player) : PlayerState
+    local ammoCapacity = plr:GetAttribute("AmmoCapacity")
+    assert(type(ammoCapacity) == "number")
+    local isReloading = plr:GetAttribute("IsReloading")
+    assert(type(isReloading) == "boolean")
+    local isAiming = plr:GetAttribute("IsAiming")
+    assert(type(isAiming) == "boolean")
+
+    return {
+        AmmoCapacity = ammoCapacity :: number,
+        IsReloading = isReloading :: boolean,
+        IsAiming = isAiming :: boolean,
+    }
+end
+function util.setPlayerState(
+    plr : Player, 
+    plrState: PlayerState) 
+    
+    plr:SetAttribute("IsAiming", plrState.IsAiming)
+    plr:SetAttribute("AmmoCapacity", plrState.AmmoCapacity)
+    plr:SetAttribute("IsReloading", plrState.IsReloading)
 end
 
 return util 

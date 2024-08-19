@@ -23,9 +23,7 @@ type ClientWeaponState = {
 }
 type Maid = Maid.Maid
 
-type PlayerState = {
-    IsAiming : boolean
-}
+type PlayerState = WeaponUtil.PlayerState
 type WeaponUtil = WeaponUtil.WeaponData
 --constants
 --remotes
@@ -37,6 +35,9 @@ local ON_WEAPON_EQUIP = "OnWeaponEquip"
 local ON_AIMING = "OnAiming"
 local ON_PLAYER_AIM_DIRECTION_UPDATE = "OnPlayerAimDirectionUpdate"
 local ON_WEAPON_SHOT_EFFECT = "OnWeaponShotEffect"
+
+local ON_WEAPON_RELOAD = "OnWeaponReload"
+local ON_WEAPON_RELOAD_CLIENT= "OnWeaponReloadClient"
 
 local GET_CLIENT_WEAPON_STATE_INFO = "GetClientWeaponStateInfo"
 --variables
@@ -65,24 +66,6 @@ end
 local sys = {}
 
 local maid = Maid.new()
-
-function createPlayerState(
-    isAiming : boolean) : PlayerState
-    return {
-        IsAiming = isAiming
-    }
-end
-function getPlayerState(plr : Player) : PlayerState
-    return {
-        IsAiming = plr:GetAttribute("IsAiming") :: boolean,
-    }
-end
-function setPlayerState(
-    plr : Player, 
-    plrState: PlayerState) 
-    
-    plr:SetAttribute("IsAiming", plrState.IsAiming)
-end
 
 function onWeaponEquip(plr : Player, gun : Tool)
     local char = plr.Character; assert(char)
@@ -207,8 +190,10 @@ end
 function onPlayerAdded(plr : Player)
     local _maid = Maid.new()
     
-    setPlayerState(plr, createPlayerState(
-        false
+    WeaponUtil.setPlayerState(plr, WeaponUtil.createPlayerState(
+        false,
+        false,
+        15
     ))
 
     onCharacterAdded(plr.Character or plr.CharacterAdded:Wait())
@@ -247,15 +232,45 @@ function getEffectsFolder()
     return effectsFolder
 end
 
-function getWeaponState()
-    
-end
-function otherPlayerHit(plr : Player)
-	
-end
-
-
 function onInstanceHit(hit : BasePart, cf : CFrame) 
+    local maxMarkCountPerHitInstance = 10
+    local function createMark()
+        local p = Instance.new("Part")
+        p.Size = Vector3.new(0.2,0.2,1)
+        p.Anchored = true
+        p.CanCollide = false
+		p.Transparency = 0
+        p.CFrame = cf
+        p.Parent = getEffectsFolder()
+        local s, newSubtract: UnionOperation? = pcall(function() 
+            print(hit:GetAttribute("IsShot"), "<" ,maxMarkCountPerHitInstance)
+            if  (hit:GetAttribute("IsShot") or 0) < maxMarkCountPerHitInstance then 
+                return hit:SubtractAsync({p})
+            end
+            error(`Shot more than {maxMarkCountPerHitInstance}!`)
+        end)
+        if s and newSubtract then 
+            newSubtract.CFrame = hit.CFrame
+            newSubtract.Parent = hit.Parent
+            for _,v in pairs(hit:GetChildren()) do
+                v:Clone().Parent = newSubtract
+            end
+            newSubtract:SetAttribute("IsShot", (hit:GetAttribute("IsShot") :: number? or 0) + 1)
+            hit:Destroy()
+        else
+            local hitCloned = Instance.new"Part"
+            hitCloned.TopSurface, hitCloned.BottomSurface = Enum.SurfaceType.Smooth, Enum.SurfaceType.Smooth
+            hitCloned.CFrame, hitCloned.Size = hit.CFrame, hit.Size
+            hitCloned.Material, hitCloned.Color, hitCloned.CanCollide, hitCloned.Anchored = hit.Material, hit.Color, hit.CanCollide, hit.Anchored
+            for _,v in pairs(hit:GetChildren()) do
+                v:Clone().Parent = hitCloned
+            end
+            hitCloned.Parent = hit.Parent
+            hit:Destroy()
+        end
+        p:Destroy()
+    end
+
     local function createFx()
         local p = Instance.new("Part")
         p.Anchored = true
@@ -283,6 +298,9 @@ function onInstanceHit(hit : BasePart, cf : CFrame)
         end)
     end
 
+    if hit:IsDescendantOf(workspace:WaitForChild("Assets"):WaitForChild("Destructibles")) then
+        createMark()
+    end
     createFx()
 end
 
@@ -360,7 +378,7 @@ function spawnBullet(startCf : CFrame)
             if char then
 				otherHumanoidHit(char :: Model, hit, CFrame.new(ray.Position, ray.Position + ray.Normal))
             else
-                onInstanceHit(hit, CFrame.new(ray.Position, ray.Position + ray.Normal))
+                onInstanceHit(hit, CFrame.new(ray.Position, ray.Position + pcf.LookVector))
 			end
 			_maid:Destroy()
          end
@@ -442,12 +460,19 @@ function onGunShot(
 
     local weaponState = WeaponUtil.getWeaponState(gun)
 
-    if (DateTime.now().UnixTimestampMillis/1000) - lastShotTime > weaponData.RateOfFire*0.99 and weaponState.AmmoRound > 0 then 
-        gun:SetAttribute(shotTimeStampKey, (DateTime.now().UnixTimestampMillis/1000))
-        shoot()
-        
-        weaponState.AmmoRound -= 1
-        WeaponUtil.setWeaponState(gun, weaponState)
+    if (DateTime.now().UnixTimestampMillis/1000) - lastShotTime > weaponData.RateOfFire*0.99 then 
+        if weaponState.AmmoRound > 0 then
+            if not WeaponUtil.getPlayerState(plr).IsReloading then  
+                gun:SetAttribute(shotTimeStampKey, (DateTime.now().UnixTimestampMillis/1000))
+                shoot()
+                
+                weaponState.AmmoRound -= 1
+                WeaponUtil.setWeaponState(gun, weaponState)
+            end
+        else
+             --empty clip
+            playSound(240785604, gun:WaitForChild("Handle"))
+        end
     end
 end
 
@@ -477,7 +502,6 @@ function onGunShotStart(
         if weaponData.RateOfFire <= (timeNow - t) then --make this loop somehow
             t = tick()
             handle:SetAttribute(shotTimeStampKey, t)
-            print("befo ")
 
             onGunShot(plr, shotPosCf)
         end
@@ -491,8 +515,38 @@ function onGunShotEnd(plr : Player)
     return nil
 end
 
+function onReload(plr : Player)
+    local gun = getWeaponFromPlayer(plr); assert(gun)
+    local weaponData = WeaponUtil.getWeaponDataByName(gun.Name); assert(weaponData)
+    local weaponState = WeaponUtil.getWeaponState(gun)
+    local playerState = WeaponUtil.getPlayerState(plr)
+
+    local function reloading()
+        local bulletsReloaded = math.clamp((weaponData.AmmoRound - weaponState.AmmoRound), 0, playerState.AmmoCapacity)
+        playerState.AmmoCapacity -= bulletsReloaded
+        playerState.IsReloading = true
+        weaponState.AmmoRound += bulletsReloaded
+        WeaponUtil.setPlayerState(plr, playerState)
+        WeaponUtil.setWeaponState(gun, weaponState) 
+
+        playSound(4648872031, gun:WaitForChild("Handle"))
+        NetworkUtil.invokeClient(ON_WEAPON_RELOAD_CLIENT, plr)
+
+        local newPlayerState = WeaponUtil.getPlayerState(plr); newPlayerState.IsReloading = false
+        WeaponUtil.setPlayerState(plr, newPlayerState)
+    end
+
+    if not playerState.IsReloading then
+        if playerState.AmmoCapacity > 0 and weaponState.AmmoRound < weaponData.AmmoRound then 
+            reloading()
+        else
+        
+        end
+    end
+end
+
 function sys.init(maid : Maid)
-    local defaultAmmoCapacity = 10
+    local defaultAmmoCapacity = 0
 
     for _,v in pairs(CollectionService:GetTagged("Gun")) do
         local weaponData = WeaponUtil.getWeaponDataByName(v.Name)
@@ -501,29 +555,42 @@ function sys.init(maid : Maid)
             v, 
             weaponData
         )
-        local newWeaponState = WeaponUtil.createWeaponState(defaultAmmoCapacity,  weaponData.AmmoRound)
+        local newWeaponState = WeaponUtil.createWeaponState(defaultAmmoCapacity)
         WeaponUtil.setWeaponState(v, newWeaponState)
     end
     
     maid:GiveTask(Players.PlayerAdded:Connect(onPlayerAdded))
     --networks
     maid:GiveTask(NetworkUtil.onServerEvent(ON_AIMING, function(plr : Player, aiming : boolean)  
-        local playerState = getPlayerState(plr)
+        local gun = getWeaponFromPlayer(plr); assert(gun)
+        local playerState = WeaponUtil.getPlayerState(plr)
         
-        setPlayerState(plr, createPlayerState(
-            aiming
+        WeaponUtil.setPlayerState(plr, WeaponUtil.createPlayerState(
+            aiming,
+            playerState.IsReloading,
+            playerState.AmmoCapacity
         ))
     end))
 
     maid:GiveTask(NetworkUtil.onServerEvent(ON_WEAPON_SHOT, onGunShot))
+    maid:GiveTask(NetworkUtil.onServerEvent(ON_WEAPON_RELOAD, onReload))
 
     NetworkUtil.onServerInvoke(ON_WEAPON_SHOT_START, onGunShotStart)
     NetworkUtil.onServerInvoke(ON_WEAPON_SHOT_END, onGunShotEnd)
- 
+
     NetworkUtil.getRemoteEvent(ON_WEAPON_EQUIP)
     NetworkUtil.getRemoteEvent(ON_PLAYER_AIM_DIRECTION_UPDATE)
     NetworkUtil.getRemoteEvent(ON_WEAPON_SHOT_EFFECT)
     NetworkUtil.getRemoteFunction(GET_CLIENT_WEAPON_STATE_INFO)
+    NetworkUtil.getRemoteFunction(ON_WEAPON_RELOAD_CLIENT)
+
+    --temporary!
+    local proxprompt : ProximityPrompt = workspace.SpawnLocation.ProximityPrompt
+    proxprompt.ActionText = "Add 10 Ammo"
+    proxprompt.TriggerEnded:Connect(function(plr : Player)
+        local plrState = WeaponUtil.getPlayerState(plr); plrState.AmmoCapacity += 10
+        WeaponUtil.setPlayerState(plr, plrState)
+    end)
 end
 
 return sys
