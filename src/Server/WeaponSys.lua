@@ -234,7 +234,27 @@ end
 
 function onInstanceHit(hit : BasePart, cf : CFrame) 
     local maxMarkCountPerHitInstance = 10
-    local function createMark()
+    local function createDefaultMark()
+        local markLifeTime = 10
+        local ray = workspace:Raycast(cf.Position - cf.LookVector, cf.LookVector*100)
+        if ray and ray.Instance == hit then 
+            local p = Instance.new("Part")
+            p.CanCollide = false
+            p.Anchored = true
+            p.Transparency = 1
+            p.Size = Vector3.new(0.2,0.2,0.1)
+            p.CFrame = CFrame.new(ray.Position, ray.Position + ray.Normal)
+            local decal = Instance.new("Decal")
+            decal.Texture = "rbxassetid://3696144972"
+            decal.Parent = p
+            p.Parent = getEffectsFolder()
+            task.delay(markLifeTime, function()
+                p:Destroy()
+            end)
+        end
+    end
+    
+    local function create3DMark()
         local p = Instance.new("Part")
         p.Size = Vector3.new(0.2,0.2,1)
         p.Anchored = true
@@ -299,7 +319,9 @@ function onInstanceHit(hit : BasePart, cf : CFrame)
     end
 
     if hit:IsDescendantOf(workspace:WaitForChild("Assets"):WaitForChild("Destructibles")) then
-        createMark()
+        create3DMark()
+    else
+        createDefaultMark()
     end
     createFx()
 end
