@@ -405,9 +405,9 @@ function shootEffect(weaponData : WeaponUtil.WeaponData)
     camera.CFrame = camera.CFrame*CFrame.Angles(math.rad(math.random(2,5)), 0, 0)
 
     local blur = Lighting:WaitForChild("Blur") :: BlurEffect
-    blur.Size = 3
+    blur.Size = 5
     
-    local ts =  TweenService:Create(blur, TweenInfo.new(0.5), {Size = 0})
+    local ts =  TweenService:Create(blur, TweenInfo.new(1), {Size = 0})
     ts:Play()
     ts:Destroy()
 
