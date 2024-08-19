@@ -33,7 +33,7 @@ data.Gun = {
     Id = 1,
     RateOfFire = 0.5,
     AmmoRound = 10,
-    HealthDamage = 6 
+    HealthDamage = 15
 } 
 data.Uzi = {
     Name = "Uzi",
@@ -41,7 +41,7 @@ data.Uzi = {
     Id = 2,
     RateOfFire = 0.1,
     AmmoRound = 20,
-    HealthDamage = 3
+    HealthDamage = 8
 }
 
 local util = {}
