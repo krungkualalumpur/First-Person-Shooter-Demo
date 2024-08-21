@@ -292,7 +292,6 @@ function onInstanceHit(hit : BasePart, cf : CFrame)
         
         p.Parent = getEffectsFolder()
         local s, newSubtract: UnionOperation? = pcall(function() 
-            print(hit:GetAttribute("IsShot"), "<" ,maxMarkCountPerHitInstance)
             if  (hit:GetAttribute("IsShot") or 0) < maxMarkCountPerHitInstance then 
                 return hit:SubtractAsync({p})
             end
