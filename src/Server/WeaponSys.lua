@@ -234,33 +234,62 @@ end
 
 function onInstanceHit(hit : BasePart, cf : CFrame) 
     local maxMarkCountPerHitInstance = 10
-    local function createDefaultMark()
+    
+    local raycastParams = RaycastParams.new()
+     raycastParams.FilterDescendantsInstances = {getEffectsFolder()}
+
+    local function createDefaultMark(offset : Vector3?)
         local markLifeTime = 10
-        local ray = workspace:Raycast(cf.Position - cf.LookVector, cf.LookVector*100)
-        if ray and ray.Instance == hit then 
+        local ray = workspace:Raycast(cf.Position - cf.LookVector, cf.LookVector*100, raycastParams)
+
+        if ray --[[and ray.Instance == hit ]]then 
             local p = Instance.new("Part")
             p.CanCollide = false
             p.Anchored = true
             p.Transparency = 1
-            p.Size = Vector3.new(0.2,0.2,0.1)
-            p.CFrame = CFrame.new(ray.Position, ray.Position + ray.Normal)
-            local decal = Instance.new("Decal")
-            decal.Texture = "rbxassetid://3696144972"
-            decal.Parent = p
+            p.Size = Vector3.new(0.4,0.4,0.05)
+            p.CFrame = CFrame.new(ray.Position, ray.Position + ray.Normal) + if offset then offset else Vector3.new()
+            local sg = Instance.new("SurfaceGui")
+            sg.Brightness = 5
+            sg.LightInfluence = 1
+            sg.Parent = p
+            local imageLabel = Instance.new("ImageLabel") 
+            imageLabel.BackgroundTransparency = 1
+            imageLabel.ImageColor3 = Color3.fromRGB(255,150,150)
+            imageLabel.Size = UDim2.fromScale(1, 1)
+            imageLabel.Image = "rbxassetid://17266483161" --"rbxassetid://3696144972"
+            imageLabel.Parent = sg
+            -- local decal = Instance.new("Decal")
+            -- decal.Texture = "rbxassetid://3696144972"
+            -- decal.Parent = sg
             p.Parent = getEffectsFolder()
+            
+            local tween = TweenService:Create(sg, TweenInfo.new(2), {
+                Brightness = 0;
+                LightInfluence = 0
+            })
+            local tween2 = TweenService:Create(imageLabel, TweenInfo.new(markLifeTime), {
+                ImageTransparency = 1
+            })
+            tween:Play(); tween:Destroy()
+            tween2:Play(); tween:Destroy()
+
             task.delay(markLifeTime, function()
                 p:Destroy()
             end)
+            print(p)
         end
     end
     
     local function create3DMark()
         local p = Instance.new("Part")
-        p.Size = Vector3.new(0.2,0.2,1)
+        p.Size = Vector3.new(1,0.2,0.2)
         p.Anchored = true
+        p.Shape = Enum.PartType.Cylinder
         p.CanCollide = false
-		p.Transparency = 0
-        p.CFrame = cf
+		p.Transparency = 1
+        p.CFrame = cf*CFrame.Angles(0, math.pi/2, 0)
+        
         p.Parent = getEffectsFolder()
         local s, newSubtract: UnionOperation? = pcall(function() 
             print(hit:GetAttribute("IsShot"), "<" ,maxMarkCountPerHitInstance)
@@ -289,6 +318,9 @@ function onInstanceHit(hit : BasePart, cf : CFrame)
             hit:Destroy()
         end
         p:Destroy()
+
+        local offset = p.CFrame.RightVector*p.Size.X*0.5
+        createDefaultMark(offset)
     end
 
     local function createFx()
@@ -296,6 +328,7 @@ function onInstanceHit(hit : BasePart, cf : CFrame)
         p.Anchored = true
         p.CanCollide = false
 		p.Transparency = 1
+
         p.CFrame = cf
         p.Parent = getEffectsFolder()
 
@@ -378,16 +411,25 @@ function spawnBullet(weaponData : WeaponUtil.WeaponData, startCf : CFrame)
      p.Size = Vector3.new(0.2,0.2,1)
      p.CFrame = startCf-- handle.CFrame + handle.CFrame.LookVector*handle.Size.Y
      p.Material = Enum.Material.Neon
-     p.Parent = workspace		
+     p.Parent = getEffectsFolder()		
 
      local raycastParams = RaycastParams.new()
      raycastParams.FilterDescendantsInstances = {p, getEffectsFolder()}
-     --bullet init
-     _maid:GiveTask(RunService.Stepped:Connect(function(t, dt : number)
-        local velocity = p.CFrame.LookVector*weaponData.BulletSpeed*dt
 
+     local overlapParams = OverlapParams.new()
+     overlapParams.FilterDescendantsInstances = {p, getEffectsFolder()}
+     --bullet init
+     local gravity = Vector3.new(0, -workspace.Gravity, 0)
+
+     local currentVelocity = p.CFrame.LookVector*weaponData.BulletSpeed
+     
+     _maid:GiveTask(RunService.Stepped:Connect(function(t, dt : number)
+        currentVelocity = currentVelocity + gravity*dt
+
+        local velocity = currentVelocity*dt
          local ray = if pcf then workspace:Raycast(pcf.Position, velocity, raycastParams) else nil
-         
+         local partsTouched = workspace:GetPartsInPart(p, overlapParams)
+
          p.CFrame = pcf + velocity
         --  p.AssemblyLinearVelocity = velocity/dt
 
@@ -400,11 +442,27 @@ function spawnBullet(weaponData : WeaponUtil.WeaponData, startCf : CFrame)
             if char then
 				otherHumanoidHit(char :: Model, hit, CFrame.new(ray.Position, ray.Position + ray.Normal), weaponData.HealthDamage)
             else
-                onInstanceHit(hit, CFrame.new(ray.Position, ray.Position + pcf.LookVector))
+                local lcf = CFrame.new(ray.Position, ray.Position + pcf.LookVector)
+                onInstanceHit(hit, lcf)
 			end
-			_maid:Destroy()
+            currentVelocity -= currentVelocity*0.95
+			--_maid:Destroy()
+            pcf = CFrame.new(ray.Position)*(pcf - pcf.Position) + currentVelocity*dt
+        elseif #partsTouched > 0 then
+            currentVelocity -= currentVelocity*0.95
+            pcf = pcf + currentVelocity*dt
+        else
+            pcf += velocity 
          end
          i += dt*10
+
+        --  local p2 = Instance.new("Part")
+        -- --  print(pcf.Position)
+        --  p2.Position = p.Position
+        --  p2.CanCollide = false
+        --  p2.Anchored = true 
+        --  p2.Parent = getEffectsFolder()
+
          --p.CFrame += p.CFrame.LookVector*3
 		 --local parts = p:GetTouchingParts()
 		 --local p2 = p:Clone()
@@ -424,25 +482,28 @@ function spawnBullet(weaponData : WeaponUtil.WeaponData, startCf : CFrame)
          --    end
          --    _maid:Destroy() 
          --end
+         if currentVelocity.Magnitude < 20 then 
+            _maid:Destroy()
+            return
+         end
          if i >= 100 then
              _maid:Destroy()
-             return
+             return 
          end
 
-         pcf += velocity
      end))
 
-	_maid:GiveTask(p.Touched:Connect(function(hit : BasePart)
-		if hit.CanCollide and hit.Transparency < 1 then 
-			local char = if hit.Parent and hit.Parent:FindFirstChild("Humanoid") then hit.Parent else nil
-			if char then
-				otherHumanoidHit(char :: Model, hit, pcf, weaponData.HealthDamage)
-            else
-                onInstanceHit(hit, pcf)
-			end
-			_maid:Destroy()
-		end
-	end))
+	-- _maid:GiveTask(p.Touched:Connect(function(hit : BasePart) 
+	-- 	if hit.CanCollide and hit.Transparency < 1 then 
+	-- 		local char = if hit.Parent and hit.Parent:FindFirstChild("Humanoid") then hit.Parent else nil
+	-- 		if char then
+	-- 			otherHumanoidHit(char :: Model, hit, pcf, weaponData.HealthDamage)
+    --         else
+    --             onInstanceHit(hit, pcf)
+	-- 		end
+	-- 		_maid:Destroy()
+	-- 	end
+	-- end))
 
     return p
 end
