@@ -297,6 +297,7 @@ function onInstanceHit(hit : BasePart, cf : CFrame)
             end
             error(`Shot more than {maxMarkCountPerHitInstance}!`)
         end)
+        
         if s and newSubtract then 
             newSubtract.CFrame = hit.CFrame
             newSubtract.Parent = hit.Parent
@@ -444,11 +445,11 @@ function spawnBullet(weaponData : WeaponUtil.WeaponData, startCf : CFrame)
                 local lcf = CFrame.new(ray.Position, ray.Position + pcf.LookVector)
                 onInstanceHit(hit, lcf)
 			end
-            currentVelocity -= currentVelocity*0.95
+            currentVelocity -= currentVelocity*0.8
 			--_maid:Destroy()
             pcf = CFrame.new(ray.Position)*(pcf - pcf.Position) + currentVelocity*dt
         elseif #partsTouched > 0 then
-            currentVelocity -= currentVelocity*0.95
+            currentVelocity -= currentVelocity*0.8
             pcf = pcf + currentVelocity*dt
         else
             pcf += velocity 
@@ -481,7 +482,7 @@ function spawnBullet(weaponData : WeaponUtil.WeaponData, startCf : CFrame)
          --    end
          --    _maid:Destroy() 
          --end
-         if currentVelocity.Magnitude < 20 then 
+         if currentVelocity.Magnitude < 5 then 
             _maid:Destroy()
             return
          end

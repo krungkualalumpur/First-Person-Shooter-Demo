@@ -29,7 +29,7 @@ export type PlayerState = {
 local data : {[string] : WeaponData} = {}
 data.Gun = {
     Name = "Gun",
-    BulletSpeed = 2856.8,
+    BulletSpeed = 285.68,
     Id = 1,
     RateOfFire = 0.5,
     AmmoRound = 10,
@@ -37,7 +37,7 @@ data.Gun = {
 } 
 data.Uzi = {
     Name = "Uzi",
-    BulletSpeed = 2856.8,
+    BulletSpeed = 285.68,
     Id = 2,
     RateOfFire = 0.1,
     AmmoRound = 20,
